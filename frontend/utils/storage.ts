@@ -45,6 +45,23 @@ function extractRootHashFromTree(tree: any): string | undefined {
   return undefined;
 }
 
+function extractRootHashFromTx(tx: any): string | undefined {
+  if (!tx) return undefined;
+  try {
+    if (typeof tx.rootHash === 'string' && tx.rootHash) return tx.rootHash;
+
+    // Nested containers
+    const nested = tx.tx || tx.transaction || tx.data || tx.result || tx.meta || tx.payload;
+    if (nested && typeof nested === 'object') {
+      return (
+        (typeof nested.rootHash === 'string' && nested.rootHash) ||
+        undefined
+      );
+    }
+  } catch {}
+  return undefined;
+}
+
 function normalizeTxHash(tx: any): string {
   if (!tx) return '';
   if (typeof tx === 'string') return tx;
@@ -77,7 +94,7 @@ export async function uploadFile(
       throw new Error(`Error generating Merkle tree: ${String(treeErr)}`);
     }
 
-    const rootHash = extractRootHashFromTree(tree);
+    let rootHash = extractRootHashFromTree(tree);
 
     // Upload to network
     // Cast signer to any to avoid CJS/ESM Wallet type incompatibility from ethers in different builds
@@ -85,6 +102,9 @@ export async function uploadFile(
     if (uploadErr !== null && uploadErr !== undefined) {
       throw new Error(`Upload error: ${String(uploadErr)}`);
     }
+
+    // Prefer authoritative root hash from tx if provided by SDK
+    rootHash = rootHash ?? extractRootHashFromTx(tx);
 
     const txHash = normalizeTxHash(tx);
 
