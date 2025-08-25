@@ -40,7 +40,7 @@ export default async function handler(
       ? rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_')
       : `${rootHashStr.slice(0, 10)}.bin`;
 
-    // Download to a temporary file first (with Merkle proof verification enabled in downloadFile)
+    // Download to a temporary file first
     const tmpPath = path.join(
       os.tmpdir(),
       `zg_${Date.now()}_${Math.random().toString(36).slice(2)}.bin`,
@@ -50,14 +50,36 @@ export default async function handler(
 
     const stat = await fs.promises.stat(tmpPath);
 
-    // Prepare headers for file download
+    // Set headers for file download
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
     res.setHeader('Content-Length', String(stat.size));
 
-    // TODO: stream file to client & cleanup temp file
-    res.end(`File ready at ${tmpPath}`);
+    // Stream file
+    const stream = fs.createReadStream(tmpPath);
+
+    stream.on('error', (err) => {
+      // eslint-disable-next-line no-console
+      console.error('Stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).end('Stream error');
+      } else {
+        res.destroy(err as unknown as Error);
+      }
+    });
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      fs.promises.unlink(tmpPath).catch(() => {});
+    };
+
+    res.on('close', cleanup);
+    res.on('finish', cleanup);
+
+    stream.pipe(res);
   } catch (err: any) {
     // eslint-disable-next-line no-console
     console.error('download-stream error:', err);
