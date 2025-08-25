@@ -57,3 +57,40 @@ function normalizeTxHash(tx: any): string {
     return String(tx);
   }
 }
+
+export async function uploadFile(
+  filePath: string,
+): Promise<{ rootHash: string | undefined; txHash: string }> {
+  if (!filePath || typeof filePath !== 'string') {
+    throw new Error('uploadFile: invalid filePath');
+  }
+
+  const { signer } = getSigner();
+
+  // Create file object from file path
+  const file = await ZgFile.fromFilePath(filePath);
+
+  try {
+    // Generate Merkle tree for verification
+    const [tree, treeErr]: [unknown, unknown] = await file.merkleTree();
+    if (treeErr !== null && treeErr !== undefined) {
+      throw new Error(`Error generating Merkle tree: ${String(treeErr)}`);
+    }
+
+    const rootHash = extractRootHashFromTree(tree);
+
+    // Upload to network
+    // Cast signer to any to avoid CJS/ESM Wallet type incompatibility from ethers in different builds
+    const [tx, uploadErr]: [any, any] = await indexer.upload(file, RPC_URL, signer as unknown as any);
+    if (uploadErr !== null && uploadErr !== undefined) {
+      throw new Error(`Upload error: ${String(uploadErr)}`);
+    }
+
+    const txHash = normalizeTxHash(tx);
+
+    return { rootHash, txHash };
+  } finally {
+    // Always close the file when done
+    await file.close();
+  }
+}
