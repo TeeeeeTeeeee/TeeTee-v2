@@ -111,3 +111,5 @@ export async function downloadFile(rootHash: string, outputPath: string): Promis
     throw new Error(`Download error: ${String(err)}`);
   }
 }
+
+export const _internal = { getSigner };
