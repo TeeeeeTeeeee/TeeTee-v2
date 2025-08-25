@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent, ChangeEvent } from 'react';
+import Header from '@/components/Header';
 
 // If you have a Header component, you can import and use it here.
 // import Header from '../components/Header';
@@ -115,7 +116,7 @@ export default function StoragePage() {
 
   return (
     <div className="min-h-screen grid grid-rows-[auto_1fr]">
-      {/* <Header /> */}
+      <Header />
       <main className="w-full max-w-3xl mx-auto p-6 sm:p-10">
         <h1 className="text-2xl font-semibold mb-6">0G Storage (Upload / Download)</h1>
         <p className="text-sm text-gray-600 mb-8">
