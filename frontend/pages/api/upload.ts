@@ -65,12 +65,32 @@ export default async function handler(
       fs.promises.unlink(tempPath).catch(() => {});
     }
 
-    res.status(200).json({
+    const normalized: SuccessResponse = {
       filename: String(originalName),
-      size: Number(size),
-      rootHash: String(result?.rootHash ?? 'stub'),
-      txHash: String(result?.txHash ?? 'stub'),
-    });
+      size: Number(size) || 0,
+      rootHash:
+        typeof result?.rootHash === 'string'
+          ? result.rootHash
+          : (() => {
+              try {
+                return JSON.stringify(result?.rootHash ?? null);
+              } catch {
+                return String(result?.rootHash);
+              }
+            })(),
+      txHash: (() => {
+        const tx = (result as any)?.txHash;
+        if (typeof tx === 'string') return tx;
+        if (tx && typeof tx.hash === 'string') return tx.hash;
+        try {
+          return JSON.stringify(tx ?? null);
+        } catch {
+          return String(tx);
+        }
+      })(),
+    };
+
+    return res.status(200).json(normalized);
   } catch (err: any) {
     console.error('upload-multipart error:', err);
     return res.status(500).json({ error: err?.message || 'Internal Server Error' });
