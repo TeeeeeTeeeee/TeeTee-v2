@@ -40,8 +40,9 @@ export default async function handler(
       ? rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_')
       : `${rootHashStr.slice(0, 10)}.bin`;
 
-    // Download to a temporary file first
-    const tmpPath = path.join(
+    // Download to a temporary file first (with Merkle proof verification enabled in downloadFile)
+    let tmpPath: string | null = null;
+    tmpPath = path.join(
       os.tmpdir(),
       `zg_${Date.now()}_${Math.random().toString(36).slice(2)}.bin`,
     );
@@ -50,13 +51,11 @@ export default async function handler(
 
     const stat = await fs.promises.stat(tmpPath);
 
-    // Set headers for file download
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename=\"${safeName}\"`);
     res.setHeader('Content-Length', String(stat.size));
 
-    // Stream file
     const stream = fs.createReadStream(tmpPath);
 
     stream.on('error', (err) => {
