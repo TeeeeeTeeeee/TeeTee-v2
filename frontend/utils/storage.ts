@@ -94,3 +94,20 @@ export async function uploadFile(
     await file.close();
   }
 }
+
+export async function downloadFile(rootHash: string, outputPath: string): Promise<void> {
+  if (!rootHash || typeof rootHash !== 'string') {
+    throw new Error('downloadFile: invalid rootHash');
+  }
+  if (!outputPath || typeof outputPath !== 'string') {
+    throw new Error('downloadFile: invalid outputPath');
+  }
+
+  await ensureDirForFile(outputPath);
+
+  // withProof = true enables Merkle proof verification
+  const err: unknown = await indexer.download(rootHash, outputPath, true);
+  if (err !== null && err !== undefined) {
+    throw new Error(`Download error: ${String(err)}`);
+  }
+}
