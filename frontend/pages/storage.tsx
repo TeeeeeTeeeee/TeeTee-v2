@@ -13,6 +13,7 @@ type UploadSuccess = {
 };
 
 export default function StoragePage() {
+  const [rawUploadResponse, setRawUploadResponse] = useState<any>(null);
   // Upload (multipart) state
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadLoading, setUploadLoading] = useState<boolean>(false);
@@ -48,9 +49,30 @@ export default function StoragePage() {
       });
 
       const data = (await res.json()) as unknown;
+      setRawUploadResponse(data);
       if (!res.ok) throw new Error((data as any)?.error || 'Upload failed');
 
-      setUploadResult(data as UploadSuccess);
+      const anyData = data as any;
+      const tx = anyData?.tx || anyData?.transaction || anyData?.result || anyData?.data || anyData;
+      const extractedRoot = (() => {
+        try {
+          // Direct fields
+          if (typeof anyData.rootHash === 'string' && anyData.rootHash) return anyData.rootHash;
+
+          if (typeof tx?.rootHash === 'string' && tx.rootHash) return tx.rootHash;
+        } catch {}
+        return '';
+      })();
+
+      const normalized: UploadSuccess = {
+        filename: String(anyData?.filename ?? selectedFile.name ?? 'uploaded-file'),
+        size: Number(anyData?.size ?? selectedFile.size ?? 0),
+        rootHash: extractedRoot || String(anyData?.rootHash || ''),
+        txHash: String(anyData?.txHash || anyData?.tx?.hash || ''),
+      };
+
+      setUploadResult(normalized);
+      if (normalized.rootHash) setRootHash(normalized.rootHash);
     } catch (err: any) {
       setUploadError(err?.message || String(err));
     } finally {
