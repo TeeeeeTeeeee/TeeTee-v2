@@ -12,3 +12,19 @@ const INDEXER_RPC: string = process.env.ZG_INDEXER_RPC || 'https://indexer-stora
 
 // Initialize indexer once (stateless client)
 const indexer: Indexer = new Indexer(INDEXER_RPC);
+
+function getPrivateKey(): string {
+  const pk = process.env.PRIVATE_KEY;
+  if (!pk) {
+    throw new Error(
+      'Missing PRIVATE_KEY environment variable. Set PRIVATE_KEY in your environment (e.g., .env.local).',
+    );
+  }
+  return pk.startsWith('0x') ? pk : `0x${pk}`;
+}
+
+function getSigner(): { provider: ethers.JsonRpcProvider; signer: ethers.Wallet } {
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
+  const signer = new ethers.Wallet(getPrivateKey(), provider);
+  return { provider, signer };
+}
