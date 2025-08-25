@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse, PageConfig } from 'next';
 import formidable, { type Fields, type Files, type File } from 'formidable';
 import fs from 'node:fs';
+import { uploadFile } from '../../utils/storage';
 
 export const config: PageConfig = {
   api: {
@@ -57,11 +58,18 @@ export default async function handler(
       return res.status(400).json({ error: 'Could not determine uploaded temp file path' });
     }
 
+    let result: Awaited<ReturnType<typeof uploadFile>> | undefined;
+    try {
+      result = await uploadFile(tempPath);
+    } finally {
+      fs.promises.unlink(tempPath).catch(() => {});
+    }
+
     res.status(200).json({
       filename: String(originalName),
       size: Number(size),
-      rootHash: 'stub',
-      txHash: 'stub',
+      rootHash: String(result?.rootHash ?? 'stub'),
+      txHash: String(result?.txHash ?? 'stub'),
     });
   } catch (err: any) {
     console.error('upload-multipart error:', err);
