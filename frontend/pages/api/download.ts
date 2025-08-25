@@ -1,4 +1,8 @@
 import type { NextApiRequest, NextApiResponse, PageConfig } from 'next';
+import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
+import { downloadFile } from '../../utils/storage';
 
 export const config: PageConfig = {
   api: {
@@ -36,8 +40,24 @@ export default async function handler(
       ? rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_')
       : `${rootHashStr.slice(0, 10)}.bin`;
 
-    // For now, just respond with the computed safe filename
-    res.status(200).json({ safeName });
+    // Download to a temporary file first (with Merkle proof verification enabled in downloadFile)
+    const tmpPath = path.join(
+      os.tmpdir(),
+      `zg_${Date.now()}_${Math.random().toString(36).slice(2)}.bin`,
+    );
+
+    await downloadFile(rootHashStr, tmpPath);
+
+    const stat = await fs.promises.stat(tmpPath);
+
+    // Prepare headers for file download
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.setHeader('Content-Length', String(stat.size));
+
+    // TODO: stream file to client & cleanup temp file
+    res.end(`File ready at ${tmpPath}`);
   } catch (err: any) {
     // eslint-disable-next-line no-console
     console.error('download-stream error:', err);
