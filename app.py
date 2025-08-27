@@ -231,6 +231,97 @@ except Exception as e:
 total_layers_global = total_layers
 middle_layer_global = middle_layer
 
+def generate_multi_token(prompt: str, max_new_tokens: int = 32, stop_token_ids=None):
+    """
+    Simple token-by-token loop:
+      - Node1 recomputes its half on the growing sequence
+      - Node2 predicts the next token
+      - Repeat until max_new_tokens or EOS
+
+    NOTE: This is the straightforward (recompute) version.
+    """
+
+    if stop_token_ids is None:
+        stop_token_ids = [tokenizer.eos_token_id] if tokenizer.eos_token_id is not None else []
+
+    # format + tokenize once
+    chat_prompt = tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False)
+    device = next(model.parameters()).device
+    input_ids = tokenizer.encode(chat_prompt, return_tensors="pt").to(device)
+
+    generated_token_ids = []
+
+    node2_url = os.environ.get('NODE2_URL', 'http://localhost:5001')
+    generate_endpoint = f"{node2_url}/generate"
+
+    for _ in range(max_new_tokens):
+        attention_mask = None  # no padding; we pass None to per-layer forward
+
+        # 1) run Node1 half to get hidden_states for entire (growing) sequence
+        with torch.no_grad():
+            outputs = model(input_ids, attention_mask=attention_mask, output_hidden_states=True)
+            hidden_states = outputs.last_hidden_state  # [B, S, H]
+            del outputs
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+        # 2) send to Node2 to get next token (single step)
+        node2_payload = {
+            "input_ids": input_ids.detach().cpu().tolist(),
+            "attention_mask": torch.ones_like(input_ids).detach().cpu().tolist(),  # shape [B,S], unused by Node2 layers
+            "position_ids": torch.arange(input_ids.shape[1], device=device).unsqueeze(0).detach().cpu().tolist(),
+            "hidden_states": hidden_states.detach().cpu().tolist(),
+            "prompt": chat_prompt,
+            "layer_info": {
+                "total_layers": total_layers_global,
+                "middle_layer": middle_layer_global
+            }
+        }
+
+        resp = requests.post(generate_endpoint, json=node2_payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+
+        next_id = int(data["next_token_id"])
+        generated_token_ids.append(next_id)
+
+        # 3) stop conditions
+        if next_id in stop_token_ids:
+            break
+
+        # 4) append next token and continue
+        next_id_tensor = torch.tensor([[next_id]], dtype=input_ids.dtype, device=input_ids.device)
+        input_ids = torch.cat([input_ids, next_id_tensor], dim=1)
+
+    # Decode only the newly generated part
+    generated_text = tokenizer.decode(generated_token_ids, skip_special_tokens=True)
+    return {
+        "text": generated_text,
+        "tokens": generated_token_ids,
+        "num_new_tokens": len(generated_token_ids)
+    }
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    try:
+        data = request.get_json(force=True)
+        prompt = data.get("prompt", "")
+        max_new_tokens = int(data.get("max_new_tokens", 32))
+
+        result = generate_multi_token(prompt, max_new_tokens=max_new_tokens)
+
+        # You can also return attestation you already compute in /process if you want.
+        return jsonify({
+            "prompt": prompt,
+            "generated_text": result["text"],
+            "tokens": result["tokens"],
+            "num_new_tokens": result["num_new_tokens"]
+        })
+    except Exception as e:
+        logger.error(f"/chat error: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/verify', methods=['GET'])
 def verify_model():
     """Endpoint to verify the model's identity and integrity"""
