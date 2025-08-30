@@ -4,3 +4,4 @@ export { HowItWorks } from './HowItWorks';
 export { Features } from './Features';
 export { CallToAction } from './CallToAction';
 export { Footer } from './Footer';
+export { default as Particles } from './Particles';
