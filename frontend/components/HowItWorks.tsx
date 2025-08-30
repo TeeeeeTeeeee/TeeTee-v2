@@ -2,7 +2,10 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Keyboard3D from "./Keyboard3D";
+import dynamic from "next/dynamic";
+
+// Properly import the Keyboard3D component with no SSR
+const Keyboard3D = dynamic(() => import("./Keyboard3D"), { ssr: false });
 
 interface Step {
   id: number;
@@ -44,7 +47,10 @@ export const HowItWorks = () => {
   const [highlightedCard, setHighlightedCard] = useState<number | null>(null);
 
   // Handle keyboard key press
-  const handleKeyPress = (keyNumber: number) => {
+  const handleKeyPress = (keyValue: string | number) => {
+    // Handle both string and number types for flexibility
+    const keyNumber = typeof keyValue === 'string' ? parseInt(keyValue, 10) : keyValue;
+    
     if (keyNumber >= 1 && keyNumber <= 5) {
       const stepIndex = keyNumber - 1; // Convert to 0-based index
       setCurrentStep(stepIndex);
