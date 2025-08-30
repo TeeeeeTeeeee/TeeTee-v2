@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -9,12 +11,21 @@ interface Conversation {
   title: string;
 }
 
+interface Message {
+  id: number;
+  text: string;
+  isUser: boolean;
+  timestamp: Date;
+}
+
 const ChatPage = () => {
   const [isOpen, setIsOpen] = useState(true);
   const [tokenCount, setTokenCount] = useState(0);
   const [selectedModel, setSelectedModel] = useState('TinyLkama-1.1B-Chat-v1.0 (#1)');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activeConversation, setActiveConversation] = useState<number | null>(null);
   
   const models = [
     'TinyLkama-1.1B-Chat-v1.0 (#1)',
@@ -25,6 +36,35 @@ const ChatPage = () => {
   
   // Sample conversations data (empty for now)
   const conversations: Conversation[] = [];
+  
+  // Handle sending a message
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
+    
+    // Add user message
+    const userMessage: Message = {
+      id: Date.now(),
+      text: message,
+      isUser: true,
+      timestamp: new Date()
+    };
+    
+    setMessages(prev => [...prev, userMessage]);
+    setMessage('');
+    
+    // Simulate AI response (would be replaced with actual API call)
+    setTimeout(() => {
+      const aiMessage: Message = {
+        id: Date.now() + 1,
+        text: `This is a simulated response from the ${selectedModel} model.`,
+        isUser: false,
+        timestamp: new Date()
+      };
+      
+      setMessages(prev => [...prev, aiMessage]);
+      setTokenCount(prev => prev + 10); // Simulate token usage
+    }, 1000);
+  };
 
   return (
     <div className="relative flex h-screen font-inter">
@@ -93,7 +133,8 @@ const ChatPage = () => {
             
             <Link 
               href="/models"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm t
+              ext-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
               title={!isOpen ? "Models" : ""}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -233,7 +274,8 @@ const ChatPage = () => {
       <motion.main
         className="flex-1 h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20"
         animate={{
-          marginLeft: isOpen ? "260px" : "60px"
+          marginLeft: isOpen ? "260px" : "60px",
+          width: `calc(100% - ${isOpen ? "260px" : "60px"})`
         }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
@@ -274,16 +316,40 @@ const ChatPage = () => {
         
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col w-full">
-            {/* Chat messages will go here */}
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <h1 className="text-3xl font-bold text-gray-900 flex items-baseline">
-                <span className="text-2xl mr-2">Welcome to</span> 
-                <span className="text-4xl bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-pacifico)' }}>
-                  TeeTee
-                </span>
-              </h1>
-              <p className="mt-2 text-gray-600">This is a secure AI assistant running in a TEE.</p>
-            </div>
+            {/* Chat messages */}
+            {messages.length > 0 ? (
+              <div className="flex-1 flex flex-col space-y-4 overflow-y-auto pb-4">
+                {messages.map((msg) => (
+                  <div 
+                    key={msg.id}
+                    className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div 
+                      className={`max-w-[70%] px-4 py-3 rounded-2xl ${
+                        msg.isUser 
+                          ? 'bg-violet-400 text-white rounded-tr-none' 
+                          : 'bg-white border border-gray-200 text-gray-800 rounded-tl-none'
+                      }`}
+                    >
+                      <p className="text-sm">{msg.text}</p>
+                      <div className="text-xs mt-1 opacity-70 text-right">
+                        {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <h1 className="text-3xl font-bold text-gray-900 flex items-baseline">
+                  <span className="text-2xl mr-2">Welcome to</span> 
+                  <span className="text-4xl bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-pacifico)' }}>
+                    TeeTee
+                  </span>
+                </h1>
+                <p className="mt-2 text-gray-600">This is a secure AI assistant running in a TEE.</p>
+              </div>
+            )}
           
             {/* Input Area */}
             <div className="mt-auto pb-6">
@@ -301,12 +367,20 @@ const ChatPage = () => {
                   type="text"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSendMessage();
+                    }
+                  }}
                   placeholder="Ask anything"
                   className="flex-1 px-3 py-1 text-gray-900 placeholder-gray-500 bg-transparent border-none outline-none resize-none font-inter"
                 />
 
                 {/* Send Icon */}
-                <button className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors">
+                <button 
+                  onClick={handleSendMessage}
+                  className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors"
+                >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
