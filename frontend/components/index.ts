@@ -7,3 +7,4 @@ export { Footer } from './Footer';
 export { default as Particles } from './Particles';
 export { default as PillNav } from './PillNav';
 export type { PillNavItem } from './PillNav';
+export { default as TextPressure } from './TextPressure';

@@ -1,3 +1,7 @@
+"use client";
+
+import TextPressure from './TextPressure';
+
 export const Footer = () => {
   return (
     <footer className="py-20 px-6">
@@ -30,20 +34,35 @@ export const Footer = () => {
                 <a href="#" className="block text-lg text-gray-600 hover:text-gray-900">↗ GitHub</a>
                 <a href="#" className="block text-lg text-gray-600 hover:text-gray-900">↗ Discord</a>
                 <a href="#" className="block text-lg text-gray-600 hover:text-gray-900">↗ LinkedIn</a>
-                <a href="#" className="block text-lg text-gray-600 hover:text-gray-900">↗ Instagram</a>
               </div>
             </div>
           </div>
 
-          {/* Large Brand Text */}
-          <div className="text-[200px] font-bold leading-none mb-0">
-            TEETEE
-          </div>
-
-          {/* Bottom Bar */}
-          <div className="pt-8 border-t flex justify-between items-center">
-            <p className="text-sm">©TeeTee</p>
-            <p className="text-sm">POLICIES</p>
+          {/* Large Brand Text with TextPressure directly above the horizontal line */}
+          <div className="mt-10 mb-0">
+            <div style={{ position: 'relative', height: '290px', width: '100%', padding: '0', overflow: 'visible' }}>
+              <TextPressure
+                text="TEETEE"
+                flex={false} /* Set to false to allow custom positioning */
+                alpha={false}
+                stroke={false}
+                width={true}
+                weight={true}
+                italic={true}
+                textColor="#7c3aed"
+                strokeColor="#ddd6fe" 
+                fontFamily="Geist, Inter, sans-serif"
+                fontUrl=""
+                minFontSize={40} // Increased font size
+                className="w-full"
+              />
+            </div>
+            
+            {/* Horizontal line with copyright and policies directly below the brand name */}
+            <div className="border-t flex justify-between items-center pt-0">
+              <p className="text-sm">©TeeTee</p>
+              <p className="text-sm">POLICIES</p>
+            </div>
           </div>
         </div>
     </footer>
