@@ -26,7 +26,7 @@ export const Hero = () => {
       
       {/* Content container with appropriate padding and transparent background 
           Using pointer-events-none to allow mouse events to pass through to the particles */}
-      <div className="pt-32 pb-24 flex items-center relative z-10 pointer-events-none">
+      <div className="pt-36 pb-24 flex items-center relative z-10 pointer-events-none">
         <div className="max-w-7xl mx-auto px-6 w-full">
           <div className="flex flex-col items-center text-center">
             {/* Brand Name */}

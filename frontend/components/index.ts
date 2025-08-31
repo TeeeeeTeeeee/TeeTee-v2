@@ -5,3 +5,5 @@ export { Features } from './Features';
 export { CallToAction } from './CallToAction';
 export { Footer } from './Footer';
 export { default as Particles } from './Particles';
+export { default as PillNav } from './PillNav';
+export type { PillNavItem } from './PillNav';
