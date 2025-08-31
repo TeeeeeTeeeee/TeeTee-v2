@@ -1,15 +1,15 @@
 export const CallToAction = () => {
   return (
-    <section className="py-32 text-center">
-        <h2 className="text-[72px] font-bold mb-6">
+    <section className="py-20 text-center">
+        <h2 className="text-[72px] font-bold mb-4">
           Ready to Build with{' '}
           <span className="text-violet-400">TeeTee?</span>
         </h2>
-        <p className="text-2xl text-gray-600 mb-12 max-w-3xl mx-auto leading-relaxed">
+        <p className="text-2xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
           Join thousands of developers building the future of decentralized AI. 
           Get started in minutes or contribute a node to earn rewards.
         </p>
-        <div className="flex justify-center gap-6 mb-20">
+        <div className="flex justify-center gap-6 mb-14">
           <button className="bg-violet-400 text-white px-10 py-4 rounded-full text-xl font-semibold hover:bg-violet-500 transition-colors">
             Get Started Now
           </button>

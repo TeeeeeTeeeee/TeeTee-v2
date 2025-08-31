@@ -79,10 +79,10 @@ export const HowItWorks = () => {
   const isLastStep = currentStep === steps.length - 1;
 
   return (
-    <section className="py-24 bg-white">
+    <section className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-20">
-          <h2 className="font-mono text-[72px] font-bold mb-6">
+        <div className="mb-12">
+          <h2 className="font-mono text-[72px] font-bold mb-4">
             How It Works
           </h2>
           <p className="font-mono text-xl text-gray-600 uppercase tracking-wider">

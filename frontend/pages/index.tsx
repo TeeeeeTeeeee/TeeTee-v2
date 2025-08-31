@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 const Home: NextPage = () => {
   return (
     <main className={`min-h-screen w-full ${geistSans.variable} ${geistMono.variable}`}>
-      <div className="relative">
+      <div className="relative space-y-0">
         <Navbar />
         <Hero />
         <HowItWorks />
