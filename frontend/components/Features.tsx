@@ -88,12 +88,20 @@ export const Features = () => {
   }));
   
   return (
-    <section ref={featuresRef} className="py-20 bg-white" id="features">
+    <section ref={featuresRef} className="py-20 bg-transparent" id="features">
       <div className="max-w-7xl mx-auto px-6">
-        <h2 className="text-[72px] font-bold text-center mb-4">Key Features</h2>
-        <p className="text-2xl text-gray-600 text-center mb-8 max-w-4xl mx-auto">
-          Discover the revolutionary capabilities that make TeeTee the future of AI inference
-        </p>
+        <h2 className="text-[40px] font-bold text-center mb-4">
+          <div>Seamless Architecture for</div>
+          <div style={{
+            background: 'linear-gradient(to right, #a78bfa, #d8b4fe)',
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            color: 'transparent'
+          }}>
+            Faster, Smarter, and More Secure
+          </div>
+          <div>AI Workloads</div>
+        </h2>
         
         {/* CircularGallery container - only render when component is mounted on client side */}
         <div className="h-[450px] relative mb-0">

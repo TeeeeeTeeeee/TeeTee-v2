@@ -49,7 +49,7 @@ export const Footer = () => {
                 width={true}
                 weight={true}
                 italic={true}
-                textColor="#7c3aed"
+                textColor="linear-gradient(to right, #a78bfa, #d8b4fe)"
                 strokeColor="#ddd6fe" 
                 fontFamily="Geist, Inter, sans-serif"
                 fontUrl=""

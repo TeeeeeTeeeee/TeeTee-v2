@@ -79,86 +79,95 @@ export const HowItWorks = () => {
   const isLastStep = currentStep === steps.length - 1;
 
   return (
-    <section className="py-20 bg-white">
+    <section className="py-20 bg-transparent">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="mb-12">
-          <h2 className="font-mono text-[72px] font-bold mb-4">
-            How It Works
-          </h2>
-          <p className="font-mono text-xl text-gray-600 uppercase tracking-wider">
-            Experience seamless AI interface through our revolutionary TEE-based architecture
-          </p>
-        </div>
-
         <div className="grid grid-cols-2 gap-10">
-          {/* Left: Content Display Card Container */}
-          <div className="bg-white border-2 border-black shadow-lg rounded-none p-6 h-[500px] flex flex-col">
-            {/* Card Header */}
-            <div className="border-b-2 border-black pb-4 mb-6 mt-0">
-              <div className="flex justify-between items-start">
-                <span className="font-mono text-8xl font-bold text-black">
-                  {String(currentStep + 1).padStart(2, '0')}
-                </span>
-                <div className="text-right">
-                  <h3 className="font-mono text-3xl font-bold uppercase text-black">
-                    {steps[currentStep].title}
-                  </h3>
+          {/* Left: Header Content + Content Display Card Container */}
+          <div className="h-[500px] flex flex-col">
+            {/* Header Content */}
+            <div className="mb-6">
+              <h2 className="text-[40px] font-bold mb-4" style={{
+                background: 'linear-gradient(to right, #a78bfa, #d8b4fe)',
+                WebkitBackgroundClip: 'text',
+                backgroundClip: 'text',
+                color: 'transparent'
+              }}>
+                Revolutionary AI Made Simple
+              </h2>
+              <p className="text-l text-gray-600 tracking-wider">
+                With our tee-based architecture, TeeTee delivers blazing-fast inference without the usual complexity. Plug in, run instantly, and scale on demand.
+              </p>
+            </div>
+
+            {/* Content Display Card Container - Reduced Height */}
+            <div className="bg-white border-2 border-black shadow-lg rounded-none p-4 flex-1 flex flex-col">
+              {/* Card Header */}
+              <div className="border-b-2 border-black pb-3 mb-4 mt-0">
+                <div className="flex justify-between items-start">
+                  <span className="font-mono text-6xl font-bold text-black">
+                    {String(currentStep + 1).padStart(2, '0')}
+                  </span>
+                  <div className="text-right">
+                    <h3 className="font-mono text-2xl font-bold uppercase text-black">
+                      {steps[currentStep].title}
+                    </h3>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Card Content */}
-            <div className="flex-grow">
-              <p className="font-mono text-l leading-relaxed text-gray-700 mb-4">
-                {steps[currentStep].description}
-              </p>
-              
-              {/* Progress Indicators */}
-              <div className="flex space-x-2 mb-4">
-                {steps.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`w-3 h-3 border border-black ${
-                      index === currentStep 
-                        ? 'bg-black' 
-                        : index < currentStep 
-                        ? 'bg-gray-400' 
-                        : 'bg-white'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Card Navigation */}
-            <div className="flex items-center justify-between border-t-2 border-black pt-4 mt-auto">
-              <button 
-                onClick={prevStep}
-                disabled={isFirstStep}
-                className={`px-4 py-2 border-2 border-black font-mono text-l font-bold transition-colors ${
-                  isFirstStep 
-                    ? 'opacity-50 cursor-not-allowed bg-gray-100' 
-                    : 'hover:bg-black hover:text-white bg-white'
-                }`}
-              >
-                ← PREV
-              </button>
-
-              <div className="font-mono text-xs text-gray-600">
-                {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
+              {/* Card Content */}
+              <div className="flex-grow">
+                <p className="font-mono text-sm leading-relaxed text-gray-700 mb-3">
+                  {steps[currentStep].description}
+                </p>
+                
+                {/* Progress Indicators */}
+                <div className="flex space-x-2 mb-3">
+                  {steps.map((_, index) => (
+                    <div
+                      key={index}
+                      className={`w-3 h-3 border border-black ${
+                        index === currentStep 
+                          ? 'bg-black' 
+                          : index < currentStep 
+                          ? 'bg-gray-400' 
+                          : 'bg-white'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
 
-              <button 
-                onClick={nextStep}
-                disabled={isLastStep}
-                className={`px-4 py-2 border-2 border-black font-mono text-l font-bold transition-colors ${
-                  isLastStep 
-                    ? 'opacity-50 cursor-not-allowed bg-gray-100' 
-                    : 'hover:bg-black hover:text-white bg-white'
-                }`}
-              >
-                NEXT →
-              </button>
+              {/* Card Navigation */}
+              <div className="flex items-center justify-between border-t-2 border-black pt-3 mt-auto">
+                <button 
+                  onClick={prevStep}
+                  disabled={isFirstStep}
+                  className={`px-3 py-2 border-2 border-black font-mono text-sm font-bold transition-colors ${
+                    isFirstStep 
+                      ? 'opacity-50 cursor-not-allowed bg-gray-100' 
+                      : 'hover:bg-black hover:text-white bg-white'
+                  }`}
+                >
+                  ← PREV
+                </button>
+
+                <div className="font-mono text-xs text-gray-600">
+                  {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
+                </div>
+
+                <button 
+                  onClick={nextStep}
+                  disabled={isLastStep}
+                  className={`px-3 py-2 border-2 border-black font-mono text-sm font-bold transition-colors ${
+                    isLastStep 
+                      ? 'opacity-50 cursor-not-allowed bg-gray-100' 
+                      : 'hover:bg-black hover:text-white bg-white'
+                  }`}
+                >
+                  NEXT →
+                </button>
+              </div>
             </div>
           </div>
 
@@ -166,7 +175,7 @@ export const HowItWorks = () => {
           <div className="flex items-center justify-center h-[500px] relative">
             <Keyboard3D onKeyPress={handleKeyPress} />
             {/* Watermark overlay */}
-            <div className="absolute -bottom-8 right-0 w-40 h-10 bg-white z-20 flex items-end justify-end">
+            <div className="absolute -bottom-8 right-0 w-40 h-10 bg-gradient-to-r from-[#fafaff] via-[#f9f7ff] to-[#f7f8ff] z-20 flex items-end justify-end">
               <div className="font-mono text-xs text-gray-400"></div>
             </div>
           </div>
