@@ -1,141 +1,115 @@
-#!/usr/bin/env python3
-"""
-Create mock shards for testing the distributed runtime
-This bypasses the torchvision compatibility issue
-"""
+# split.py — make REAL stage shards from ./model into ./enhanced_shards
+import os, json, hashlib, torch
+from transformers import AutoModelForCausalLM, AutoConfig, AutoTokenizer
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
+import torch.nn as nn
 
-import os
-import json
-import time
-import hashlib
-from pathlib import Path
+MODEL_DIR = "./model"
+OUT_ROOT  = "./enhanced_shards"
+SPLIT_INDEX = 8  # layers [0..SPLIT_INDEX-1] and [SPLIT_INDEX..end]
 
-def create_mock_shard(shard_name: str, stage_id: int, layer_start: int, layer_end: int):
-    """Create a mock shard directory with metadata"""
-    
-    # Create shard directory
-    shard_dir = Path("enhanced_shards") / shard_name
-    shard_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Create mock model file
-    model_file = shard_dir / "pytorch_model.bin"
-    with open(model_file, 'wb') as f:
-        f.write(b"mock_model_data_" + shard_name.encode() + b"_" + str(stage_id).encode())
-    
-    # Compute file hash
-    with open(model_file, 'rb') as f:
-        file_hash = hashlib.sha256(f.read()).hexdigest()
-    
-    # Create metadata
-    metadata = {
-        "shard_info": {
-            "name": shard_name,
-            "type": f"stage_{stage_id}",
-            "stage_id": stage_id,
-            "layer_start": layer_start,
-            "layer_end": layer_end,
-            "layer_count": layer_end - layer_start
-        },
-        "model_info": {
-            "source_model": "./model",
-            "architecture": {
-                "model_type": "llama",
-                "hidden_size": 2048,
-                "num_attention_heads": 32,
-                "num_hidden_layers": 22,
-                "vocab_size": 32000,
-                "total_layers": 22
-            }
-        },
-        "file_info": {
-            "model_file": "pytorch_model.bin",
-            "file_size": model_file.stat().st_size,
-            "file_hash": file_hash
-        },
-        "verification": {
-            "created_at": time.time(),
-            "created_by": "create_mock_shards.py",
-            "version": "1.0"
-        }
-    }
-    
-    # Generate comprehensive hash
-    metadata_str = json.dumps(metadata, sort_keys=True)
-    comprehensive_hash = hashlib.sha256(metadata_str.encode()).hexdigest()
-    metadata["verification"]["comprehensive_hash"] = comprehensive_hash
-    
-    # Save metadata
-    with open(shard_dir / "shard_metadata.json", 'w') as f:
-        json.dump(metadata, f, indent=2)
-    
-    # Copy config files from model directory if they exist
-    model_dir = Path("model")
-    if model_dir.exists():
-        for file_name in ["config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"]:
-            src_file = model_dir / file_name
-            if src_file.exists():
-                dst_file = shard_dir / file_name
-                with open(src_file, 'rb') as src, open(dst_file, 'wb') as dst:
-                    dst.write(src.read())
-    
-    print(f"✓ Created mock shard: {shard_dir}")
-    return metadata
+os.makedirs(OUT_ROOT, exist_ok=True)
+STAGE0 = os.path.join(OUT_ROOT, "stage_0")
+STAGE1 = os.path.join(OUT_ROOT, "stage_1")
+os.makedirs(STAGE0, exist_ok=True)
+os.makedirs(STAGE1, exist_ok=True)
 
-def create_pipeline_manifest(shards_metadata):
-    """Create pipeline manifest"""
-    
-    manifest = {
-        "pipeline_info": {
-            "name": "llama_distributed_pipeline",
-            "source_model": "./model",
-            "total_stages": len(shards_metadata),
-            "total_layers": 22,
-            "created_at": time.time()
-        },
-        "stages": shards_metadata,
-        "verification": {
-            "pipeline_hash": hashlib.sha256(
-                json.dumps(shards_metadata, sort_keys=True).encode()
-            ).hexdigest()
-        }
-    }
-    
-    # Save manifest
-    manifest_file = Path("enhanced_shards") / "pipeline_manifest.json"
-    with open(manifest_file, 'w') as f:
-        json.dump(manifest, f, indent=2)
-    
-    print(f"✓ Created pipeline manifest: {manifest_file}")
-    return manifest
+def file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024*1024), b""):
+            h.update(chunk)
+    return "sha256:" + h.hexdigest()
 
-def main():
-    """Create mock shards for testing"""
-    
-    print("Creating mock shards for testing...")
-    
-    # Create two-stage split (similar to original split.py)
-    shards_metadata = []
-    
-    # First shard: layers 0-10
-    metadata1 = create_mock_shard("first", 0, 0, 11)
-    shards_metadata.append(metadata1)
-    
-    # Second shard: layers 11-21
-    metadata2 = create_mock_shard("second", 1, 11, 22)
-    shards_metadata.append(metadata2)
-    
-    # Create manifest
-    manifest = create_pipeline_manifest(shards_metadata)
-    
-    print("\n" + "="*50)
-    print("MOCK SHARDS CREATED SUCCESSFULLY")
-    print("="*50)
-    print(f"Created {len(shards_metadata)} shards:")
-    for metadata in shards_metadata:
-        shard_info = metadata["shard_info"]
-        print(f"  - {shard_info['name']}: layers {shard_info['layer_start']}-{shard_info['layer_end']-1}")
-    print(f"Pipeline hash: {manifest['verification']['pipeline_hash'][:16]}...")
-    print("="*50)
+def make_decoder_layer(cfg, idx: int):
+    # robust to HF versions that add 'layer_idx'
+    import inspect
+    sig = inspect.signature(LlamaDecoderLayer.__init__)
+    return LlamaDecoderLayer(cfg, layer_idx=idx) if "layer_idx" in sig.parameters else LlamaDecoderLayer(cfg)
 
-if __name__ == "__main__":
-    main()
+# ---- stage modules (must match main.py) ----
+class FirstStage(nn.Module):
+    """Embeddings + first SPLIT_INDEX decoder layers."""
+    def __init__(self, cfg: AutoConfig, split_index: int):
+        super().__init__()
+        self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_size)
+        self.layers = nn.ModuleList([make_decoder_layer(cfg, i) for i in range(split_index)])
+
+    def forward(self, input_ids):
+        # not used here; just defining the container for state_dict
+        x = self.embed(input_ids); return x
+
+class SecondStage(nn.Module):
+    """Remaining decoder layers + final norm + lm_head."""
+    def __init__(self, cfg: AutoConfig, split_index: int):
+        super().__init__()
+        self.layers = nn.ModuleList([make_decoder_layer(cfg, i) for i in range(split_index, cfg.num_hidden_layers)])
+        self.norm = LlamaRMSNorm(cfg.hidden_size, eps=cfg.rms_norm_eps)
+        self.lm_head = nn.Linear(cfg.hidden_size, cfg.vocab_size, bias=False)
+
+    def forward(self, hidden):
+        return self.lm_head(hidden)
+
+# ---- load full model once ----
+print("Loading full model from", MODEL_DIR)
+cfg = AutoConfig.from_pretrained(MODEL_DIR)
+tok = AutoTokenizer.from_pretrained(MODEL_DIR)
+full = AutoModelForCausalLM.from_pretrained(MODEL_DIR, torch_dtype=torch.float32)
+
+# cut the internal pieces
+llama = full.model
+embed = llama.embed_tokens
+layers = llama.layers
+norm   = llama.norm
+head   = full.lm_head
+
+# build wrappers
+split_index = max(1, min(SPLIT_INDEX, cfg.num_hidden_layers - 1))
+first  = FirstStage(cfg, split_index)
+second = SecondStage(cfg, split_index)
+
+# copy module references so state_dict picks real weights
+first.embed = embed                           # share weights
+first.layers = nn.ModuleList(list(layers[:split_index]))
+second.layers = nn.ModuleList(list(layers[split_index:]))
+second.norm = norm
+second.lm_head = head
+
+# save stage weights
+w0 = os.path.join(STAGE0, "pytorch_model.bin")
+w1 = os.path.join(STAGE1, "pytorch_model.bin")
+torch.save(first.state_dict(),  w0)
+torch.save(second.state_dict(), w1)
+
+# save config/tokenizer to both
+cfg.save_pretrained(STAGE0); tok.save_pretrained(STAGE0)
+cfg.save_pretrained(STAGE1); tok.save_pretrained(STAGE1)
+
+# write metadata + manifest
+meta0 = {
+    "stage": 0, "layers": [0, split_index-1],
+    "split_index": split_index,
+    "vocab_size": cfg.vocab_size, "hidden_size": cfg.hidden_size,
+    "num_hidden_layers": cfg.num_hidden_layers,
+    "weights": "pytorch_model.bin", "sha256": file_sha256(w0)
+}
+meta1 = {
+    "stage": 1, "layers": [split_index, cfg.num_hidden_layers-1],
+    "split_index": split_index,
+    "vocab_size": cfg.vocab_size, "hidden_size": cfg.hidden_size,
+    "num_hidden_layers": cfg.num_hidden_layers,
+    "weights": "pytorch_model.bin", "sha256": file_sha256(w1)
+}
+with open(os.path.join(STAGE0, "shard_metadata.json"), "w") as f: json.dump(meta0, f, indent=2)
+with open(os.path.join(STAGE1, "shard_metadata.json"), "w") as f: json.dump(meta1, f, indent=2)
+
+manifest = {
+    "model_dir": MODEL_DIR,
+    "stages": [
+        {"path": "stage_0", **meta0},
+        {"path": "stage_1", **meta1},
+    ]
+}
+with open(os.path.join(OUT_ROOT, "pipeline_manifest.json"), "w") as f: json.dump(manifest, f, indent=2)
+
+print("✅ Wrote real stage shards to", OUT_ROOT)

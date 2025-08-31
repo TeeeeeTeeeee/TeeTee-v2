@@ -1,326 +1,180 @@
-#!/usr/bin/env python3
-"""
-Interactive Pipeline - Working Implementation
-Fixes path issues and adds user prompt functionality
+# main.py — run REAL inference by loading the stage shards from ./enhanced_shards
+import os, sys, json, hashlib, torch, torch.nn as nn
+from transformers import AutoConfig, AutoTokenizer
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer, LlamaRMSNorm
 
-This script:
-1. Uses the correct enhanced_shards/ path
-2. Provides interactive user prompts
-3. Works around the tensor dimension issues
-4. Demonstrates the complete Method A + Method B system
-"""
+ROOT = "./enhanced_shards"
+MANIFEST = os.path.join(ROOT, "pipeline_manifest.json")
 
-import os
-import json
-import time
-import logging
-from pathlib import Path
-from typing import Dict, List
+# ---------- devices & dtype ----------
+if torch.cuda.is_available():
+    device_part1 = "cuda:0"; device_part2 = "cuda:0"
+    dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+elif torch.backends.mps.is_available():
+    device_part1 = "mps"; device_part2 = "mps"; dtype = torch.float16
+else:
+    device_part1 = "cpu"; device_part2 = "cpu"; dtype = torch.float32
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger('interactive_pipeline')
+def file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024*1024), b""):
+            h.update(chunk)
+    return "sha256:" + h.hexdigest()
 
-class WorkingShardLoader:
-    """Working shard loader with correct paths"""
-    
-    def __init__(self, shard_path: str):
-        self.shard_path = Path(shard_path)
-        self.metadata = None
-        
-    def load_metadata(self) -> Dict:
-        """Load shard metadata"""
-        metadata_file = self.shard_path / "shard_metadata.json"
-        if not metadata_file.exists():
-            raise FileNotFoundError(f"Metadata not found: {metadata_file}")
-            
-        with open(metadata_file, 'r') as f:
-            self.metadata = json.load(f)
-            
-        return self.metadata
-        
-    def verify_shard(self) -> bool:
-        """Verify shard integrity"""
-        if not self.metadata:
-            self.load_metadata()
-            
-        # Check if model file exists
-        model_file = self.shard_path / "pytorch_model.bin"
-        if not model_file.exists():
-            logger.error(f"Model file not found: {model_file}")
-            return False
-            
-        # Verify file hash
-        import hashlib
-        hash_sha256 = hashlib.sha256()
-        
-        with open(model_file, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_sha256.update(chunk)
-                
-        actual_hash = hash_sha256.hexdigest()
-        expected_hash = self.metadata["file_info"]["file_hash"]
-        
-        if actual_hash != expected_hash:
-            logger.error(f"Hash mismatch for {self.shard_path}")
-            logger.error(f"Expected: {expected_hash}")
-            logger.error(f"Actual:   {actual_hash}")
-            return False
-            
-        logger.info(f"✓ Shard verified: {self.shard_path}")
-        return True
+def make_decoder_layer(cfg, idx: int):
+    import inspect
+    sig = inspect.signature(LlamaDecoderLayer.__init__)
+    return LlamaDecoderLayer(cfg, layer_idx=idx) if "layer_idx" in sig.parameters else LlamaDecoderLayer(cfg)
 
-class InteractivePipelineRuntime:
-    """Interactive pipeline runtime with working paths"""
-    
-    def __init__(self, manifest_path: str):
-        self.manifest_path = Path(manifest_path)
-        self.manifest = None
-        self.stage_infos = []
-        
-    def load_manifest(self):
-        """Load pipeline manifest"""
-        with open(self.manifest_path, 'r') as f:
-            self.manifest = json.load(f)
-            
-        logger.info(f"Loaded manifest: {self.manifest['pipeline_info']['name']}")
-        
-        # Extract stage information with correct paths
-        for idx, stage_metadata in enumerate(self.manifest['stages']):
-            shard_info = stage_metadata['shard_info']
-            
-            # Use index as fallback if stage_id is not set
-            stage_id = shard_info.get('stage_id')
-            if stage_id is None:
-                stage_id = idx
-                logger.warning(f"No stage_id found for {shard_info['name']}, using index {idx}")
-            
-            # FIXED: Use correct path relative to manifest directory
-            shard_path = self.manifest_path.parent / shard_info['name']
-            
-            stage_info = {
-                'stage_id': stage_id,
-                'name': shard_info['name'],
-                'layer_start': shard_info['layer_start'],
-                'layer_end': shard_info['layer_end'],
-                'shard_path': str(shard_path)
-            }
-            
-            self.stage_infos.append(stage_info)
-            
-        # Sort stages by stage_id
-        self.stage_infos.sort(key=lambda x: x['stage_id'])
-        logger.info(f"Found {len(self.stage_infos)} stages")
-        
-    def verify_all_shards(self) -> bool:
-        """Verify all shards"""
-        logger.info("Verifying all shards...")
-        
-        all_verified = True
-        
-        for stage_info in self.stage_infos:
-            shard_path = stage_info['shard_path']
-            loader = WorkingShardLoader(shard_path)
-            
-            if not loader.verify_shard():
-                logger.error(f"Verification failed for stage {stage_info['stage_id']}")
-                all_verified = False
-            else:
-                logger.info(f"✓ Stage {stage_info['stage_id']} ({stage_info['name']}) verified")
-                
-        return all_verified
-        
-    def simulate_inference(self, prompt: str) -> Dict:
-        """Simulate inference through the pipeline"""
-        logger.info(f"Processing: {prompt}")
-        
-        start_time = time.time()
-        
-        # Simulate processing through each stage
-        hidden_states = f"embedded_{prompt}"
-        
-        for stage_info in self.stage_infos:
-            stage_start = time.time()
-            
-            logger.info(f"Processing through stage {stage_info['stage_id']} ({stage_info['name']})")
-            logger.info(f"  Layers {stage_info['layer_start']}-{stage_info['layer_end']-1}")
-            
-            # Simulate stage processing
-            time.sleep(0.05)  # Mock processing time
-            hidden_states = f"stage{stage_info['stage_id']}({hidden_states})"
-            
-            stage_time = time.time() - stage_start
-            logger.info(f"  Stage {stage_info['stage_id']} completed in {stage_time:.3f}s")
-            
-        total_time = time.time() - start_time
-        
-        # Generate response based on prompt
-        responses = {
-            "meaning of life": " is 42, according to Douglas Adams' 'The Hitchhiker's Guide to the Galaxy'.",
-            "artificial intelligence": " represents the future of computing and human-machine interaction.",
-            "distributed computing": " enables scalable processing across multiple nodes and systems.",
-            "hello": "! How can I help you today?",
-            "what is": " a fascinating question that requires deep analysis and understanding.",
-            "how does": " work through complex mechanisms and interactions.",
-            "why": " is an important question that touches on fundamental principles."
-        }
-        
-        # Find appropriate response
-        generated_text = " is an interesting topic."  # Default
-        for key, response in responses.items():
-            if key.lower() in prompt.lower():
-                generated_text = response
-                break
-        
-        return {
-            "prompt": prompt,
-            "generated_text": generated_text,
-            "total_time": total_time,
-            "stages_processed": len(self.stage_infos),
-            "verification_passed": True,
-            "hidden_states_flow": hidden_states
-        }
-        
-    def setup(self):
-        """Setup the pipeline"""
-        logger.info("Setting up interactive pipeline runtime...")
-        
-        self.load_manifest()
-        
-        if not self.verify_all_shards():
-            raise RuntimeError("Shard verification failed!")
-            
-        logger.info("✓ Pipeline runtime setup complete")
+def build_position_ids(attn_mask: torch.Tensor) -> torch.Tensor:
+    cumsum = attn_mask.long().cumsum(-1)
+    return (cumsum - 1).clamp(min=0)
 
-def interactive_chat_loop(runtime):
-    """Interactive chat loop for user prompts"""
-    
+def visualize(step, items):
     print("\n" + "="*70)
-    print("🤖 TEETEE INTERACTIVE PIPELINE CHAT")
+    print(f"🔹 {step}")
     print("="*70)
-    print("✅ Method A + Method B Combined System Ready!")
-    print("✅ Verifiable shards loaded and verified")
-    print("✅ Streaming pipeline active")
-    print("\nType your questions below (or 'quit' to exit):")
-    print("-" * 70)
-    
-    while True:
-        try:
-            # Get user input
-            user_prompt = input("\n🧠 You: ").strip()
-            
-            # Check for exit
-            if user_prompt.lower() in ['quit', 'exit', 'bye', 'q']:
-                print("\n👋 Goodbye! Thanks for testing the TeeTee pipeline!")
-                break
-                
-            if not user_prompt:
-                print("Please enter a question or prompt.")
-                continue
-            
-            # Process through pipeline
-            print(f"🔄 Processing through pipeline...")
-            result = runtime.simulate_inference(user_prompt)
-            
-            # Display results
-            print(f"🤖 TeeTee: {user_prompt}{result['generated_text']}")
-            print(f"⚡ Processing time: {result['total_time']:.3f}s")
-            print(f"🔧 Stages used: {result['stages_processed']}")
-            print(f"✅ Verified: {'Yes' if result['verification_passed'] else 'No'}")
-            
-        except KeyboardInterrupt:
-            print("\n\n👋 Chat interrupted. Goodbye!")
+    for k, v in items.items():
+        print(f"  • {k:<16} → {tuple(v.shape)}  [{str(v.dtype).replace('torch.','')} @ {v.device}]")
+    print("-"*70)
+
+def banner(split_index, n_layers):
+    print("\nLLM Two-Stage Pipeline (from stage shards)")
+    print("┌──────────┐      ┌──────────────────────────────┐      ┌──────────────────────────────┐")
+    print(f"│  INPUT   ├──▶──▶│  stage_0 (0..{split_index-1})       ├──▶──▶│  stage_1 ({split_index}..{n_layers-1}+head) │")
+    print("└──────────┘      └──────────────────────────────┘      └──────────────────────────────┘")
+    print("         tokens ─────────────► hidden states ─────────────► logits / text\n")
+
+# ---------- stage modules (MUST match split.py layout) ----------
+class FirstStage(nn.Module):
+    def __init__(self, cfg: AutoConfig, split_index: int):
+        super().__init__()
+        self.embed = nn.Embedding(cfg.vocab_size, cfg.hidden_size)
+        self.layers = nn.ModuleList([make_decoder_layer(cfg, i) for i in range(split_index)])
+
+    def forward(self, input_ids, attention_mask):
+        x = self.embed(input_ids)
+        B, S = input_ids.shape
+        pos_ids = torch.arange(S, device=input_ids.device).unsqueeze(0).expand(B, -1)
+        for layer in self.layers:
+            x = layer(
+                hidden_states=x,
+                attention_mask=None,   # rely on internal causal mask
+                position_ids=pos_ids,
+                past_key_value=None,
+                use_cache=False,
+                output_attentions=False
+            )[0]
+        return x
+
+class SecondStage(nn.Module):
+    def __init__(self, cfg: AutoConfig, split_index: int):
+        super().__init__()
+        self.layers = nn.ModuleList([make_decoder_layer(cfg, i) for i in range(split_index, cfg.num_hidden_layers)])
+        self.norm = LlamaRMSNorm(cfg.hidden_size, eps=cfg.rms_norm_eps)
+        self.lm_head = nn.Linear(cfg.hidden_size, cfg.vocab_size, bias=False)
+
+    def forward(self, hidden):
+        S = hidden.size(1)
+        pos_ids = torch.arange(S, device=hidden.device).unsqueeze(0)
+        for layer in self.layers:
+            hidden = layer(
+                hidden_states=hidden,
+                attention_mask=None,
+                position_ids=pos_ids,
+                past_key_value=None,
+                use_cache=False,
+                output_attentions=False
+            )[0]
+        hidden = self.norm(hidden)
+        return self.lm_head(hidden)
+
+# ---------- load manifest & verify ----------
+if not os.path.isfile(MANIFEST):
+    sys.exit("❌ Missing ./enhanced_shards/pipeline_manifest.json. Run: python split.py")
+
+with open(MANIFEST, "r") as f:
+    manifest = json.load(f)
+stages = manifest["stages"]
+stage0 = stages[0]; stage1 = stages[1]
+SPLIT_INDEX = int(stage0["split_index"])
+STAGE0 = os.path.join(ROOT, stage0["path"])
+STAGE1 = os.path.join(ROOT, stage1["path"])
+
+for stg, path in [(stage0, STAGE0), (stage1, STAGE1)]:
+    w = os.path.join(path, stg["weights"])
+    calc = file_sha256(w)
+    if calc != stg["sha256"]:
+        sys.exit(f"❌ Hash mismatch for {w}\n expected {stg['sha256']}\n      got {calc}")
+print("✅ Shard hashes verified.")
+
+# ---------- build halves & load weights ----------
+cfg = AutoConfig.from_pretrained(STAGE0)
+tok = AutoTokenizer.from_pretrained(STAGE0)
+if tok.pad_token_id is None:
+    tok.pad_token = tok.eos_token
+
+first  = FirstStage(cfg, SPLIT_INDEX)
+second = SecondStage(cfg, SPLIT_INDEX)
+
+sd0 = torch.load(os.path.join(STAGE0, "pytorch_model.bin"), map_location="cpu")
+sd1 = torch.load(os.path.join(STAGE1, "pytorch_model.bin"), map_location="cpu")
+missing0, unexpected0 = first.load_state_dict(sd0, strict=True), ()
+missing1, unexpected1 = second.load_state_dict(sd1, strict=True), ()
+# move to devices
+first  = first.to(device_part1, dtype=dtype)
+second = second.to(device_part2, dtype=dtype)
+
+# ---------- prompt ----------
+try:
+    question = input("🧠 Enter your question: ").strip()
+except KeyboardInterrupt:
+    sys.exit("\nInterrupted.")
+if not question:
+    question = "The meaning of life is"
+
+banner(SPLIT_INDEX, cfg.num_hidden_layers)
+enc = tok(question, return_tensors="pt")
+input_ids = enc["input_ids"].to(device_part1)
+attn_mask = enc["attention_mask"].to(device_part1)
+visualize("Initial encoding", {"input_ids": input_ids, "attention_mask": attn_mask})
+
+# ---------- generation loop (top-p + temperature, no KV cache) ----------
+max_new, temperature, top_p = 64, 0.9, 0.95
+with torch.no_grad():
+    for step in range(max_new):
+        hidden = first(input_ids, attn_mask)
+        visualize(f"STEP {step+1}: After stage_0", {"hidden": hidden})
+
+        hidden_p2 = hidden.to(device_part2)
+        logits = second(hidden_p2)
+        visualize(f"STEP {step+1}: After stage_1", {"logits": logits})
+
+        last = logits[:, -1, :]
+        last = last / temperature if temperature and temperature > 0 else last
+        probs = torch.softmax(last, dim=-1)
+        sorted_probs, sorted_idx = torch.sort(probs, descending=True)
+        cum = torch.cumsum(sorted_probs, dim=-1)
+        cutoff = (cum > top_p).float().argmax(dim=-1) + 1
+
+        next_ids = []
+        for b in range(probs.size(0)):
+            k = int(cutoff[b].item())
+            keep_idx = sorted_idx[b, :k]
+            keep_probs = sorted_probs[b, :k] / sorted_probs[b, :k].sum()
+            next_ids.append(keep_idx[torch.multinomial(keep_probs, 1)])
+        next_id = torch.stack(next_ids)  # [bsz,1]
+
+        input_ids = torch.cat([input_ids, next_id.to(device_part1)], dim=1)
+        attn_mask = torch.ones_like(input_ids, device=device_part1)
+
+        if tok.eos_token_id is not None and int(next_id[0]) == tok.eos_token_id:
             break
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
-            print("Please try again with a different prompt.")
 
-def demo_mode(runtime):
-    """Demo mode with predefined prompts"""
-    
-    test_prompts = [
-        "What is the meaning of life?",
-        "How does artificial intelligence work?",
-        "Why is distributed computing important?",
-        "Hello there!",
-        "What is quantum physics?"
-    ]
-    
-    print("\n" + "="*70)
-    print("🚀 TEETEE PIPELINE DEMO MODE")
-    print("="*70)
-    
-    for i, prompt in enumerate(test_prompts, 1):
-        print(f"\n🧠 Demo {i}/{len(test_prompts)}: {prompt}")
-        print("-" * 50)
-        
-        result = runtime.simulate_inference(prompt)
-        
-        print(f"🤖 TeeTee: {prompt}{result['generated_text']}")
-        print(f"⚡ Time: {result['total_time']:.3f}s | Stages: {result['stages_processed']} | Verified: ✅")
-        
-        if i < len(test_prompts):
-            time.sleep(1)  # Brief pause between demos
-
-def main():
-    """Main function"""
-    
-    # Configuration
-    MANIFEST_PATH = "./enhanced_shards/pipeline_manifest.json"
-    
-    if not Path(MANIFEST_PATH).exists():
-        logger.error(f"Manifest not found: {MANIFEST_PATH}")
-        logger.info("Please run create_mock_shards.py first")
-        return False
-    
-    try:
-        # Create and setup runtime
-        runtime = InteractivePipelineRuntime(MANIFEST_PATH)
-        runtime.setup()
-        
-        # Ask user for mode
-        print("\n" + "🎯 " + "="*68)
-        print("TEETEE DISTRIBUTED PIPELINE - METHOD A + B COMBINED")
-        print("="*70)
-        print("Choose mode:")
-        print("1. Interactive Chat Mode (ask your own questions)")
-        print("2. Demo Mode (see predefined examples)")
-        print("3. Exit")
-        
-        while True:
-            choice = input("\nEnter choice (1/2/3): ").strip()
-            
-            if choice == "1":
-                interactive_chat_loop(runtime)
-                break
-            elif choice == "2":
-                demo_mode(runtime)
-                break
-            elif choice == "3":
-                print("👋 Goodbye!")
-                break
-            else:
-                print("Please enter 1, 2, or 3")
-        
-        print("\n" + "="*70)
-        print("✅ TEETEE PIPELINE SESSION COMPLETED")
-        print("="*70)
-        print("Key achievements demonstrated:")
-        print("✅ Method A: Verifiable shard packaging works")
-        print("✅ Method B: Streaming pipeline execution works")
-        print("✅ Hash verification: All shards verified")
-        print("✅ Interactive prompts: User questions processed")
-        print("✅ Path handling: Correct shard locations found")
-        print("="*70)
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-if __name__ == "__main__":
-    success = main()
-    exit(0 if success else 1)
+out_text = tok.decode(input_ids[0].cpu(), skip_special_tokens=True)
+print("\n" + "="*70)
+print("📝 Final output")
+print("="*70)
+print(out_text)
+print("="*70)
