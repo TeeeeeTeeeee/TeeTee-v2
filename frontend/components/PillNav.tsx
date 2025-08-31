@@ -20,6 +20,7 @@ export interface PillNavProps {
   baseColor?: string;
   pillColor?: string;
   hoveredPillTextColor?: string;
+  hoveredPillBgColor?: string;
   pillTextColor?: string;
   onMobileMenuClick?: () => void;
   initialLoadAnimation?: boolean;
@@ -36,6 +37,7 @@ const PillNav: React.FC<PillNavProps> = ({
   baseColor = "#fff",
   pillColor = "#060010",
   hoveredPillTextColor = "#060010",
+  hoveredPillBgColor,
   pillTextColor,
   onMobileMenuClick,
   initialLoadAnimation = true,
@@ -256,6 +258,7 @@ const PillNav: React.FC<PillNavProps> = ({
     ["--base"]: baseColor,
     ["--pill-bg"]: pillColor,
     ["--hover-text"]: hoveredPillTextColor,
+    ["--hover-bg"]: hoveredPillBgColor || baseColor,
     ["--pill-text"]: resolvedPillTextColor,
     ["--nav-h"]: "50px",
     ["--logo"]: "64px", // Even bigger logo size
@@ -374,8 +377,9 @@ const PillNav: React.FC<PillNavProps> = ({
               const isActive = activeHref === item.href;
 
               const pillStyle: React.CSSProperties = {
-                background: "var(--pill-bg, #fff)",
-                color: "var(--pill-text, var(--base, #000))",
+                background: isActive ? "var(--pill-bg, #fff)" : "var(--pill-bg, #fff)",
+                color: isActive ? "#ffffff" : "var(--pill-text, var(--base, #000))",
+                border: "none",
                 paddingLeft: "var(--pill-pad-x)",
                 paddingRight: "var(--pill-pad-x)",
               };
@@ -385,7 +389,8 @@ const PillNav: React.FC<PillNavProps> = ({
                   <span
                     className="hover-circle absolute left-1/2 bottom-0 rounded-full z-[1] block pointer-events-none"
                     style={{
-                      background: "var(--base, #000)",
+                      background: "var(--hover-bg, var(--base, #000))",
+                      border: hoveredPillBgColor ? `2px solid ${hoveredPillTextColor}` : "none",
                       willChange: "transform",
                     }}
                     aria-hidden="true"
@@ -414,7 +419,7 @@ const PillNav: React.FC<PillNavProps> = ({
                   {isActive && (
                     <span
                       className="absolute left-1/2 -bottom-[6px] -translate-x-1/2 w-3 h-3 rounded-full z-[4]"
-                      style={{ background: "var(--base, #000)" }}
+                      style={{ background: "#ffffff" }}
                       aria-hidden="true"
                     />
                   )}

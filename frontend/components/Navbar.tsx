@@ -31,7 +31,8 @@ export const Navbar = () => {
         activeHref={router.pathname}
         baseColor="transparent" // Transparent to show gradient background
         pillColor="#a78bfa" // Violet-400 color
-        hoveredPillTextColor="#ddd6fe" // Light violet color
+        hoveredPillBgColor="#ffffff" // White background on hover
+        hoveredPillTextColor="#ddd6fe" // Light violet color for text on hover
         pillTextColor="#ffffff"
         className="bg-transparent"
         initialLoadAnimation={true}

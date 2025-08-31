@@ -13,7 +13,7 @@ export const CallToAction = () => {
             color: 'transparent'
           }}>TeeTee?</span>
         </h2>
-        <p className="text-2xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
+        <p className="text-2xl text-gray-600 mb-8 max-w-4xl mx-auto leading-relaxed">
           Join thousands of developers building the future of decentralized AI. 
           Get started in minutes or contribute a node to earn rewards.
         </p>
