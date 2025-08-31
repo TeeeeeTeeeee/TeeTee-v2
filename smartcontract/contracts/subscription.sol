@@ -20,6 +20,7 @@ contract Subscription {
         }
 
     }
+    
     // Check subscription status
     function isSubscribed(address user) public view returns (bool) {
         return subscriptions[user] >= block.timestamp;
