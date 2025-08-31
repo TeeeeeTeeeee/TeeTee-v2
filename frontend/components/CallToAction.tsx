@@ -1,3 +1,6 @@
+import { useState } from "react";
+import CountUp from "./CountUp";
+
 export const CallToAction = () => {
   return (
     <section className="py-20 text-center">
@@ -21,19 +24,51 @@ export const CallToAction = () => {
         {/* Stats */}
         <div className="grid grid-cols-4 gap-16 max-w-5xl mx-auto">
           <div>
-            <p className="text-5xl font-bold text-violet-400 mb-3">1,247</p>
+            <p className="text-5xl font-bold text-violet-400 mb-3">
+              <CountUp 
+                from={0} 
+                to={1247} 
+                duration={2} 
+                separator="," 
+                className="text-5xl font-bold text-violet-400"
+              />
+            </p>
             <p className="text-xl text-gray-600">Active Nodes</p>
           </div>
           <div>
-            <p className="text-5xl font-bold text-violet-400 mb-3">50M+</p>
+            <p className="text-5xl font-bold text-violet-400 mb-3">
+              <CountUp 
+                from={0} 
+                to={50} 
+                duration={1.5} 
+                className="text-5xl font-bold text-violet-400"
+              />
+              <span>M+</span>
+            </p>
             <p className="text-xl text-gray-600">Inferences</p>
           </div>
           <div>
-            <p className="text-5xl font-bold text-violet-400 mb-3">15K+</p>
+            <p className="text-5xl font-bold text-violet-400 mb-3">
+              <CountUp 
+                from={0} 
+                to={15} 
+                duration={1.7} 
+                className="text-5xl font-bold text-violet-400"
+              />
+              <span>K+</span>
+            </p>
             <p className="text-xl text-gray-600">Developers</p>
           </div>
           <div>
-            <p className="text-5xl font-bold text-violet-400 mb-3">99.8%</p>
+            <p className="text-5xl font-bold text-violet-400 mb-3">
+              <CountUp 
+                from={0} 
+                to={99.8} 
+                duration={2.2} 
+                className="text-5xl font-bold text-violet-400"
+              />
+              <span>%</span>
+            </p>
             <p className="text-xl text-gray-600">Uptime</p>
           </div>
         </div>
