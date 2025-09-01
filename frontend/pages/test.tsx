@@ -73,6 +73,13 @@ const TestPage: NextPage = () => {
   const [lookupUser, setLookupUser] = useState<string>('');
   const [lookupId, setLookupId] = useState<string>('0');
 
+  // Register LLM inputs
+  const [regHost1, setRegHost1] = useState<string>('');
+  const [regHost2, setRegHost2] = useState<string>('');
+  const [regUrl1, setRegUrl1] = useState<string>('');
+  const [regUrl2, setRegUrl2] = useState<string>('');
+  const [regModel, setRegModel] = useState<string>('');
+
   const totalCostWei = useMemo(() => {
     if (!bundlePrice) return 0n;
     const bundles = toBigIntSafe(bundlesToBuy || 0);
@@ -117,6 +124,19 @@ const TestPage: NextPage = () => {
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: 'withdrawToHosts',
         args: [toBigIntSafe(withdrawId)],
+      });
+    } catch (e) {}
+  };
+
+  const handleRegisterLLM = async () => {
+    if (!isConnected) return;
+    resetWrite();
+    try {
+      await writeContract({
+        abi: ABI as any,
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: 'registerLLM',
+        args: [regHost1, regHost2, regUrl1, regUrl2, regModel],
       });
     } catch (e) {}
   };
@@ -305,27 +325,71 @@ const TestPage: NextPage = () => {
           )}
         </Section>
 
-        <Section title="withdrawToHosts(llmId) — owner only">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col">
-              <span className="text-sm text-gray-600">LLM ID</span>
-              <input
-                type="number"
-                min={0}
-                value={withdrawId}
-                onChange={(e) => setWithdrawId(e.target.value)}
-                className="border rounded px-3 py-2 w-40"
-              />
-            </label>
-            <button
-              className="inline-flex items-center px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
-              onClick={handleWithdraw}
-              disabled={!isConnected || isWriting}
-            >
-              {isWriting ? 'Sending…' : 'Withdraw to Hosts'}
-            </button>
+        <Section title="registerLLM(host1, host2, shardUrl1, shardUrl2, modelName) — owner only">
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Host 1</span>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={regHost1}
+                  onChange={(e) => setRegHost1(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Host 2</span>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={regHost2}
+                  onChange={(e) => setRegHost2(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Shard URL 1</span>
+                <input
+                  type="text"
+                  placeholder="https://..."
+                  value={regUrl1}
+                  onChange={(e) => setRegUrl1(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Shard URL 2</span>
+                <input
+                  type="text"
+                  placeholder="https://..."
+                  value={regUrl2}
+                  onChange={(e) => setRegUrl2(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col sm:col-span-2">
+                <span className="text-sm text-gray-600">Model Name</span>
+                <input
+                  type="text"
+                  placeholder="Model name"
+                  value={regModel}
+                  onChange={(e) => setRegModel(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+            </div>
+            <div>
+              <button
+                className="inline-flex items-center px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+                onClick={handleRegisterLLM}
+                disabled={!isConnected || isWriting || !regHost1 || !regHost2 || !regUrl1 || !regUrl2 || !regModel}
+              >
+                {isWriting ? 'Sending…' : 'Register LLM'}
+              </button>
+            </div>
           </div>
-          <p className="text-xs text-gray-500 mt-2">Note: This will only succeed for the contract owner, and only if there are credits to settle.</p>
+          <p className="text-xs text-gray-500 mt-2">Note: Owner-only. Provide valid host addresses and non-empty URLs and model name.</p>
         </Section>
 
         <Section title="checkUserCredits(address)">
