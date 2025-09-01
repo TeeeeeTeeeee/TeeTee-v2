@@ -1,10 +1,10 @@
-require("@nomicfoundation/hardhat-toolbox");
-const path = require("path");
-require("dotenv").config({ path: path.resolve(__dirname, ".env") });
+import "@nomicfoundation/hardhat-toolbox";
+import path from "path";
+import dotenv from "dotenv";
 
-/** @type import('hardhat/config').HardhatUserConfig */
-// hardhat.config.js
-module.exports = {
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+
+const config = {
   solidity: "0.8.20",
   networks: {
     "0g-testnet": {
@@ -13,4 +13,6 @@ module.exports = {
     },
   },
 };
+
+export default config;
 
