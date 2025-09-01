@@ -1,0 +1,19 @@
+{
+  "network": {
+    "name": "galileo",
+    "chainId": "16601"
+  },
+  "timestamp": "2025-08-20T15:14:55.517Z",
+  "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+  "contracts": {
+    "oracle": "0x567e70a52AB420c525D277b0020260a727A735dB",
+    "dataVerifierFixed": "0x730892959De01BcB6465C68aA74dCdC782af518B",
+    "inftFixed": "0x18db2ED477A25Aac615D803aE7be1d3598cdfF95"
+  },
+  "improvements": [
+    "Proper error bubbling in DataVerifierAdapter",
+    "Custom errors instead of string requires",
+    "Removed try/catch gas overhead",
+    "Better revert reason preservation"
+  ]
+}
