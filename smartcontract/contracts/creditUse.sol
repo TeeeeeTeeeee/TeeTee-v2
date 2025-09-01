@@ -51,7 +51,35 @@ contract CreditUse {
         hostedLLMs[llmId].poolBalance += 1;
     }
 
-    function getHostedLLM(uint256 id) external view returns (HostedLLMEntry memory) {
+    function registerLLM(
+        address host1,
+        address host2,
+        string calldata shardUrl1,
+        string calldata shardUrl2,
+        string calldata modelName
+    ) external onlyOwner returns (uint256 llmId) {
+        require(host1 != address(0) && host2 != address(0), "Invalid host");
+        require(
+            bytes(shardUrl1).length > 0 && bytes(shardUrl2).length > 0,
+            "Invalid URL"
+        );
+        require(bytes(modelName).length > 0, "Invalid model");
+        hostedLLMs.push(
+            HostedLLMEntry({
+                host1: host1,
+                host2: host2,
+                shardUrl1: shardUrl1,
+                shardUrl2: shardUrl2,
+                modelName: modelName,
+                poolBalance: 0
+            })
+        );
+        llmId = hostedLLMs.length - 1;
+    }
+
+    function getHostedLLM(
+        uint256 id
+    ) external view returns (HostedLLMEntry memory) {
         require(id < hostedLLMs.length, "Invalid LLM");
         return hostedLLMs[id];
     }
@@ -73,7 +101,10 @@ contract CreditUse {
 
         uint256 perHostAmount = (evenCredits / 2) * CREDIT_PRICE_WEI;
         uint256 totalAmount = perHostAmount * 2;
-        require(address(this).balance >= totalAmount, "Insufficient contract balance");
+        require(
+            address(this).balance >= totalAmount,
+            "Insufficient contract balance"
+        );
         (bool s1, ) = payable(entry.host1).call{value: perHostAmount}("");
         require(s1, "Transfer to host1 failed");
         (bool s2, ) = payable(entry.host2).call{value: perHostAmount}("");
