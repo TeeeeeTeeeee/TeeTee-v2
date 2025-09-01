@@ -15,7 +15,7 @@ export const Navbar = () => {
   const renderWalletButton = () => {
     return (
       <ConnectButton 
-        showBalance={false}
+        showBalance={true}
         chainStatus="icon"
         accountStatus="address"
       />
