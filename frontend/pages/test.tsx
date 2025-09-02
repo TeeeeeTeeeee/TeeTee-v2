@@ -80,6 +80,14 @@ const TestPage: NextPage = () => {
   const [regUrl2, setRegUrl2] = useState<string>('');
   const [regModel, setRegModel] = useState<string>('');
 
+  // Edit LLM inputs
+  const [editId, setEditId] = useState<string>('0');
+  const [editHost1, setEditHost1] = useState<string>('');
+  const [editHost2, setEditHost2] = useState<string>('');
+  const [editUrl1, setEditUrl1] = useState<string>('');
+  const [editUrl2, setEditUrl2] = useState<string>('');
+  const [editModel, setEditModel] = useState<string>('');
+
   const totalCostWei = useMemo(() => {
     if (!bundlePrice) return 0n;
     const bundles = toBigIntSafe(bundlesToBuy || 0);
@@ -137,6 +145,19 @@ const TestPage: NextPage = () => {
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: 'registerLLM',
         args: [regHost1, regHost2, regUrl1, regUrl2, regModel],
+      });
+    } catch (e) {}
+  };
+
+  const handleEditLLM = async () => {
+    if (!isConnected) return;
+    resetWrite();
+    try {
+      await writeContract({
+        abi: ABI as any,
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: 'editRegistedLLM',
+        args: [toBigIntSafe(editId), editHost1, editHost2, editUrl1, editUrl2, editModel],
       });
     } catch (e) {}
   };
@@ -390,6 +411,83 @@ const TestPage: NextPage = () => {
             </div>
           </div>
           <p className="text-xs text-gray-500 mt-2">Note: Owner-only. Provide valid host addresses and non-empty URLs and model name.</p>
+        </Section>
+
+        <Section title="editRegistedLLM(id, host1, host2, shardUrl1, shardUrl2, modelName) — owner only">
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">LLM ID</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={editId}
+                  onChange={(e) => setEditId(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Host 1 (optional)</span>
+                <input
+                  type="text"
+                  placeholder="0x... (leave empty to keep current)"
+                  value={editHost1}
+                  onChange={(e) => setEditHost1(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Host 2 (optional)</span>
+                <input
+                  type="text"
+                  placeholder="0x... (leave empty to keep current)"
+                  value={editHost2}
+                  onChange={(e) => setEditHost2(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Shard URL 1 (optional)</span>
+                <input
+                  type="text"
+                  placeholder="https://... (leave empty to keep current)"
+                  value={editUrl1}
+                  onChange={(e) => setEditUrl1(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-sm text-gray-600">Shard URL 2 (optional)</span>
+                <input
+                  type="text"
+                  placeholder="https://... (leave empty to keep current)"
+                  value={editUrl2}
+                  onChange={(e) => setEditUrl2(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+              <label className="flex flex-col sm:col-span-2">
+                <span className="text-sm text-gray-600">Model Name (optional)</span>
+                <input
+                  type="text"
+                  placeholder="Model name (leave empty to keep current)"
+                  value={editModel}
+                  onChange={(e) => setEditModel(e.target.value)}
+                  className="border rounded px-3 py-2"
+                />
+              </label>
+            </div>
+            <div>
+              <button
+                className="inline-flex items-center px-3 py-2 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
+                onClick={handleEditLLM}
+                disabled={!isConnected || isWriting || editId === ''}
+              >
+                {isWriting ? 'Sending…' : 'Edit LLM'}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">Note: Owner-only. Leave fields empty to keep current values. Only non-zero addresses and non-empty strings will update the corresponding fields.</p>
         </Section>
 
         <Section title="checkUserCredits(address)">
