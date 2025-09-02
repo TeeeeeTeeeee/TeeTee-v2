@@ -1,19 +1,24 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import type { NextPage } from 'next';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { formatEther } from 'viem';
-import ABI from '@/utils/abi.json';
 import { CONTRACT_ADDRESS } from '@/utils/address';
-
-// Simple utility for bigint math and display
-const toBigIntSafe = (n: number | string) => {
-  try {
-    return BigInt(n);
-  } catch {
-    return 0n;
-  }
-};
+import {
+  toBigIntSafe,
+  useCheckBundleAmount,
+  useCheckBundlePrice,
+  useCheckCreditPriceWei,
+  useCheckOwner,
+  useCheckUserCredits,
+  useCheckHostedLLM,
+  useCheckHostedLLMs,
+  useCheckUserCreditsDirect,
+  useBuyCredits,
+  useUsePrompt,
+  useRegisterLLM,
+  useEditRegisteredLLM,
+} from '@/lib/contracts/creditUse';
 
 const Section = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="rounded-xl border border-gray-200 p-4 mb-4 bg-white shadow-sm">
@@ -26,50 +31,31 @@ const TestPage: NextPage = () => {
   const { address, isConnected } = useAccount();
 
   // Reads
-  const { data: bundleAmount } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'BUNDLE_AMOUNT',
-  });
+  const { data: bundleAmount } = useCheckBundleAmount();
+  const { data: bundlePrice } = useCheckBundlePrice();
+  const { data: creditPriceWei } = useCheckCreditPriceWei();
+  const { data: owner } = useCheckOwner();
 
-  const { data: bundlePrice } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'BUNDLE_PRICE',
-  });
+  const { data: myCredits, refetch: refetchMyCredits } = useCheckUserCredits(address);
 
-  const { data: creditPriceWei } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'CREDIT_PRICE_WEI',
-  });
+  // Write hooks
+  const {
+    buyCredits,
+    txHash: buyTxHash,
+    isWriting: isBuying,
+    writeError: buyError,
+    resetWrite: resetBuy,
+    isConfirming: isBuyConfirming,
+    isConfirmed: isBuyConfirmed,
+  } = useBuyCredits();
 
-  const { data: owner } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'owner',
-  });
-
-  const { data: myCredits, refetch: refetchMyCredits } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'checkUserCredits',
-    args: [address ?? '0x0000000000000000000000000000000000000000'],
-    query: {
-      enabled: Boolean(address),
-    },
-  });
-
-  // Write setup
-  const { writeContract, data: txHash, isPending: isWriting, error: writeError, reset: resetWrite } = useWriteContract();
-  const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-    hash: txHash,
-  });
+  const { usePrompt, isWriting: isUsing, resetWrite: resetUsePrompt } = useUsePrompt();
+  const { registerLLM, isWriting: isRegistering, resetWrite: resetRegister } = useRegisterLLM();
+  const { editRegisteredLLM, isWriting: isEditing, resetWrite: resetEdit } = useEditRegisteredLLM();
 
   // Inputs
   const [bundlesToBuy, setBundlesToBuy] = useState<number>(1);
   const [usePromptId, setUsePromptId] = useState<string>('0');
-  const [withdrawId, setWithdrawId] = useState<string>('0');
   const [lookupUser, setLookupUser] = useState<string>('');
   const [lookupId, setLookupId] = useState<string>('0');
 
@@ -96,111 +82,43 @@ const TestPage: NextPage = () => {
 
   const handleBuyCredits = async () => {
     if (!isConnected) return;
-    resetWrite();
+    resetBuy();
     try {
-      await writeContract({
-        abi: ABI as any,
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: 'buyCredits',
-        args: [],
-        value: totalCostWei,
-      });
+      await buyCredits(totalCostWei);
     } catch (e) {
-      // handled via writeError
+      // handled via buyError
     }
   };
 
   const handleUsePrompt = async () => {
     if (!isConnected) return;
-    resetWrite();
+    resetUsePrompt();
     try {
-      await writeContract({
-        abi: ABI as any,
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: 'usePrompt',
-        args: [toBigIntSafe(usePromptId)],
-      });
-    } catch (e) {}
-  };
-
-  const handleWithdraw = async () => {
-    if (!isConnected) return;
-    resetWrite();
-    try {
-      await writeContract({
-        abi: ABI as any,
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: 'withdrawToHosts',
-        args: [toBigIntSafe(withdrawId)],
-      });
+      await usePrompt(toBigIntSafe(usePromptId));
     } catch (e) {}
   };
 
   const handleRegisterLLM = async () => {
     if (!isConnected) return;
-    resetWrite();
+    resetRegister();
     try {
-      await writeContract({
-        abi: ABI as any,
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: 'registerLLM',
-        args: [regHost1, regHost2, regUrl1, regUrl2, regModel],
-      });
+      await registerLLM(regHost1, regHost2, regUrl1, regUrl2, regModel);
     } catch (e) {}
   };
 
   const handleEditLLM = async () => {
     if (!isConnected) return;
-    resetWrite();
+    resetEdit();
     try {
-      await writeContract({
-        abi: ABI as any,
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: 'editRegistedLLM',
-        args: [toBigIntSafe(editId), editHost1, editHost2, editUrl1, editUrl2, editModel],
-      });
+      await editRegisteredLLM(toBigIntSafe(editId), editHost1, editHost2, editUrl1, editUrl2, editModel);
     } catch (e) {}
   };
 
-  const { data: lookupCredits, refetch: refetchLookupCredits } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'checkUserCredits',
-    args: [lookupUser || '0x0000000000000000000000000000000000000000'],
-    query: {
-      enabled: Boolean(lookupUser && lookupUser.length === 42),
-    },
-  });
-
-  const { data: hostedLLM } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'getHostedLLM',
-    args: [toBigIntSafe(lookupId)],
-    query: {
-      enabled: lookupId !== '',
-    },
-  });
-
-  const { data: hostedLLMDirect } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'hostedLLMs',
-    args: [toBigIntSafe(lookupId)],
-    query: {
-      enabled: lookupId !== '',
-    },
-  });
-
-  const { data: userCreditsDirect, refetch: refetchUserCreditsDirect } = useReadContract({
-    abi: ABI as any,
-    address: CONTRACT_ADDRESS as `0x${string}`,
-    functionName: 'userCredits',
-    args: [lookupUser || '0x0000000000000000000000000000000000000000'],
-    query: {
-      enabled: Boolean(lookupUser && lookupUser.length === 42),
-    },
-  });
+  // Additional reads dependent on inputs
+  const { data: lookupCredits, refetch: refetchLookupCredits } = useCheckUserCredits(lookupUser);
+  const { data: hostedLLM } = useCheckHostedLLM(lookupId, lookupId !== '');
+  const { data: hostedLLMDirect } = useCheckHostedLLMs(lookupId, lookupId !== '');
+  const { data: userCreditsDirect, refetch: refetchUserCreditsDirect } = useCheckUserCreditsDirect(lookupUser);
 
   return (
     <main className="min-h-screen w-full bg-gray-50">
@@ -226,7 +144,7 @@ const TestPage: NextPage = () => {
             </div>
             <div className="p-3 rounded bg-gray-100">
               <div className="text-sm text-gray-500">Owner</div>
-              <div className="font-mono break-all">{owner as string ?? '-'}</div>
+              <div className="font-mono break-all">{(owner as string) ?? '-'}</div>
             </div>
           </div>
         </Section>
@@ -269,18 +187,18 @@ const TestPage: NextPage = () => {
             <button
               className="inline-flex items-center px-3 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
               onClick={handleBuyCredits}
-              disabled={!isConnected || !bundlePrice || bundlesToBuy < 1 || isWriting}
+              disabled={!isConnected || !bundlePrice || bundlesToBuy < 1 || isBuying}
             >
-              {isWriting ? 'Sending…' : 'Buy Credits'}
+              {isBuying ? 'Sending…' : 'Buy Credits'}
             </button>
           </div>
-          {writeError && <div className="text-red-600 text-sm">{(writeError as any)?.shortMessage || writeError.message}</div>}
-          {txHash && (
+          {buyError && <div className="text-red-600 text-sm">{(buyError as any)?.shortMessage || (buyError as Error).message}</div>}
+          {buyTxHash && (
             <div className="text-sm text-gray-700">
-              Tx: <span className="font-mono break-all">{txHash}</span> {isConfirming && '(confirming...)'} {isConfirmed && '✅ Confirmed'}
+              Tx: <span className="font-mono break-all">{buyTxHash}</span> {isBuyConfirming && '(confirming...)'} {isBuyConfirmed && '✅ Confirmed'}
             </div>
           )}
-          {isConfirmed && (
+          {isBuyConfirmed && (
             <button className="mt-2 text-sm underline" onClick={() => refetchMyCredits?.()}>Refresh credits</button>
           )}
         </Section>
@@ -300,9 +218,9 @@ const TestPage: NextPage = () => {
             <button
               className="inline-flex items-center px-3 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
               onClick={handleUsePrompt}
-              disabled={!isConnected || isWriting}
+              disabled={!isConnected || isUsing}
             >
-              {isWriting ? 'Sending…' : 'Use Prompt'}
+              {isUsing ? 'Sending…' : 'Use Prompt'}
             </button>
           </div>
         </Section>
@@ -404,9 +322,9 @@ const TestPage: NextPage = () => {
               <button
                 className="inline-flex items-center px-3 py-2 rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
                 onClick={handleRegisterLLM}
-                disabled={!isConnected || isWriting || !regHost1 || !regHost2 || !regUrl1 || !regUrl2 || !regModel}
+                disabled={!isConnected || isRegistering || !regHost1 || !regHost2 || !regUrl1 || !regUrl2 || !regModel}
               >
-                {isWriting ? 'Sending…' : 'Register LLM'}
+                {isRegistering ? 'Sending…' : 'Register LLM'}
               </button>
             </div>
           </div>
@@ -481,9 +399,9 @@ const TestPage: NextPage = () => {
               <button
                 className="inline-flex items-center px-3 py-2 rounded bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-50"
                 onClick={handleEditLLM}
-                disabled={!isConnected || isWriting || editId === ''}
+                disabled={!isConnected || isEditing || editId === ''}
               >
-                {isWriting ? 'Sending…' : 'Edit LLM'}
+                {isEditing ? 'Sending…' : 'Edit LLM'}
               </button>
             </div>
           </div>
