@@ -120,18 +120,23 @@ contract CreditUse {
         string calldata modelName
     ) external onlyOwner {
         require(id < hostedLLMs.length, "Invalid LLM");
-        require(host1 != address(0) && host2 != address(0), "Invalid host");
-        require(
-            bytes(shardUrl1).length > 0 && bytes(shardUrl2).length > 0,
-            "Invalid URL"
-        );
-        require(bytes(modelName).length > 0, "Invalid model");
 
         HostedLLMEntry storage e = hostedLLMs[id];
-        e.host1 = host1;
-        e.host2 = host2;
-        e.shardUrl1 = shardUrl1;
-        e.shardUrl2 = shardUrl2;
-        e.modelName = modelName;
+
+        if (host1 != address(0)) {
+            e.host1 = host1;
+        }
+        if (host2 != address(0)) {
+            e.host2 = host2;
+        }
+        if (bytes(shardUrl1).length != 0) {
+            e.shardUrl1 = shardUrl1;
+        }
+        if (bytes(shardUrl2).length != 0) {
+            e.shardUrl2 = shardUrl2;
+        }
+        if (bytes(modelName).length != 0) {
+            e.modelName = modelName;
+        }
     }
 }
