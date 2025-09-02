@@ -43,12 +43,13 @@ contract CreditUse {
         return userCredits[user];
     }
 
-    function usePrompt(uint256 llmId) external {
-        require(userCredits[msg.sender] > 0, "No prompt credits");
+    function usePrompt(uint256 llmId, uint256 tokensUsed) external {
+        require(tokensUsed > 0, "Zero tokens");
         require(llmId < hostedLLMs.length, "Invalid LLM");
+        require(userCredits[msg.sender] >= tokensUsed, "Insufficient credits");
 
-        userCredits[msg.sender] -= 1;
-        hostedLLMs[llmId].poolBalance += 1;
+        userCredits[msg.sender] -= tokensUsed;
+        hostedLLMs[llmId].poolBalance += tokensUsed;
     }
 
     function registerLLM(
@@ -109,5 +110,58 @@ contract CreditUse {
         require(s1, "Transfer to host1 failed");
         (bool s2, ) = payable(entry.host2).call{value: perHostAmount}("");
         require(s2, "Transfer to host2 failed");
+    }
+
+    // function editRegistedLLM(
+    //     uint256 id,
+    //     address host1,
+    //     address host2,
+    //     string calldata shardUrl1,
+    //     string calldata shardUrl2,
+    //     string calldata modelName
+    // ) external onlyOwner {
+    //     require(id < hostedLLMs.length, "Invalid LLM");
+    //     require(host1 != address(0) && host2 != address(0), "Invalid host");
+    //     require(
+    //         bytes(shardUrl1).length > 0 && bytes(shardUrl2).length > 0,
+    //         "Invalid URL"
+    //     );
+    //     require(bytes(modelName).length > 0, "Invalid model");
+
+    //     HostedLLMEntry storage e = hostedLLMs[id];
+    //     e.host1 = host1;
+    //     e.host2 = host2;
+    //     e.shardUrl1 = shardUrl1;
+    //     e.shardUrl2 = shardUrl2;
+    //     e.modelName = modelName;
+    // }
+
+    function editRegistedLLM(
+        uint256 id,
+        address host1,
+        address host2,
+        string calldata shardUrl1,
+        string calldata shardUrl2,
+        string calldata modelName
+    ) external onlyOwner {
+        require(id < hostedLLMs.length, "Invalid LLM");
+
+        HostedLLMEntry storage e = hostedLLMs[id];
+
+        if (host1 != address(0)) {
+            e.host1 = host1;
+        }
+        if (host2 != address(0)) {
+            e.host2 = host2;
+        }
+        if (bytes(shardUrl1).length != 0) {
+            e.shardUrl1 = shardUrl1;
+        }
+        if (bytes(shardUrl2).length != 0) {
+            e.shardUrl2 = shardUrl2;
+        }
+        if (bytes(modelName).length != 0) {
+            e.modelName = modelName;
+        }
     }
 }

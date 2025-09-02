@@ -75,6 +75,44 @@
         "internalType": "uint256",
         "name": "id",
         "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "host1",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "host2",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl1",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl2",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "modelName",
+        "type": "string"
+      }
+    ],
+    "name": "editRegistedLLM",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
       }
     ],
     "name": "getHostedLLM",
@@ -221,6 +259,11 @@
       {
         "internalType": "uint256",
         "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokensUsed",
         "type": "uint256"
       }
     ],

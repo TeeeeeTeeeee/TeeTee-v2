@@ -1,10 +1,17 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { useAccount } from 'wagmi';
+import {
+  useCheckUserCredits,
+  useCheckBundlePrice,
+  useBuyCredits,
+  useUsePrompt,
+} from '@/lib/contracts/creditUse';
 
 interface Conversation {
   id: number;
@@ -20,27 +27,56 @@ interface Message {
 
 const ChatPage = () => {
   const [isOpen, setIsOpen] = useState(true);
-  const [tokenCount, setTokenCount] = useState(0);
-  const [selectedModel, setSelectedModel] = useState('TinyLkama-1.1B-Chat-v1.0 (#1)');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [activeConversation, setActiveConversation] = useState<number | null>(null);
-  
+
+  const { address, isConnected } = useAccount();
+
+  // Contract: credits and buy
+  const { data: myCredits, refetch: refetchMyCredits } = useCheckUserCredits(address);
+  const { data: bundlePrice } = useCheckBundlePrice();
+  const { buyCredits, isWriting: isBuying, isConfirmed: isBuyConfirmed, resetWrite: resetBuy } = useBuyCredits();
+  const { usePrompt, isWriting: isUsingPrompt, resetWrite: resetUsePrompt, isConfirming, isConfirmed } = useUsePrompt();
+
+  // Track latest confirmation state to avoid stale closures while waiting
+  const isConfirmedRef = useRef<boolean>(false);
+  useEffect(() => {
+    isConfirmedRef.current = !!isConfirmed;
+  }, [isConfirmed]);
+
+  useEffect(() => {
+    if (isBuyConfirmed) {
+      refetchMyCredits?.();
+    }
+  }, [isBuyConfirmed, refetchMyCredits]);
+
   const models = [
-    'TinyLkama-1.1B-Chat-v1.0 (#1)',
-    'TinyLkama-1.1B-Chat-v1.0 (#2)',
-    'TinyLkama-1.1B-Chat-v1.0 (#3)',
-    'TinyLkama-1.1B-Chat-v1.0 (#4)'
+    'gpt-4o-mini',
+    'gpt-4o',
+    'gpt-4.1-mini',
   ];
-  
+
   // Sample conversations data (empty for now)
   const conversations: Conversation[] = [];
-  
+
+  const handleBuyBundle = async () => {
+    if (!isConnected || !bundlePrice) return;
+    try {
+      resetBuy();
+      await buyCredits(bundlePrice as bigint);
+    } catch (e) {
+      // no-op, surfaced via wallet UI
+    }
+  };
+
   // Handle sending a message
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!message.trim()) return;
-    
+
     // Add user message
     const userMessage: Message = {
       id: Date.now(),
@@ -48,22 +84,62 @@ const ChatPage = () => {
       isUser: true,
       timestamp: new Date()
     };
-    
+
     setMessages(prev => [...prev, userMessage]);
     setMessage('');
-    
-    // Simulate AI response (would be replaced with actual API call)
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: Date.now() + 1,
-        text: `This is a simulated response from the ${selectedModel} model.`,
-        isUser: false,
-        timestamp: new Date()
+
+    // Require wallet connection and signature first, then call model
+    if (!isConnected) {
+      setMessages(prev => prev.concat({ id: Date.now() + 1, text: 'Please connect your wallet to continue.', isUser: false, timestamp: new Date() }));
+      return;
+    }
+
+    try {
+      resetUsePrompt();
+      // User signs/submits the tx
+      await usePrompt(0n, 1n);
+      // Wait until the transaction is actually confirmed on-chain before proceeding
+      const waitForConfirmation = async (timeoutMs = 120000) => {
+        const start = Date.now();
+        while (!isConfirmedRef.current) {
+          if (Date.now() - start > timeoutMs) {
+            throw new Error('Timed out waiting for on-chain confirmation');
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
       };
-      
+
+      await waitForConfirmation();
+      // Refresh credits after confirmation
+      refetchMyCredits?.();
+    } catch (e: any) {
+      const errMsg = e?.message || 'Transaction was rejected or failed. No credits consumed.';
+      setMessages(prev => prev.concat({ id: Date.now() + 1, text: errMsg, isUser: false, timestamp: new Date() }));
+      return;
+    }
+
+    // After signing/submitting the tx, call the OpenAI API and return the response
+    setIsGenerating(true);
+    try {
+      const history = messages.concat(userMessage).map((m) => ({ role: m.isUser ? 'user' : 'assistant', content: m.text }));
+      const resp = await fetch('/api/chat-openai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, model: selectedModel }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(errText || 'OpenAI request failed');
+      }
+      const data = await resp.json();
+      const text = data?.text || 'No response';
+      const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
       setMessages(prev => [...prev, aiMessage]);
-      setTokenCount(prev => prev + 10); // Simulate token usage
-    }, 1000);
+    } catch (err: any) {
+      setMessages(prev => prev.concat({ id: Date.now() + 1, text: `Error from model: ${err?.message || 'Unknown error'}`, isUser: false, timestamp: new Date() }));
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -94,7 +170,6 @@ const ChatPage = () => {
               </span>
             )}
           </Link>
-          
           {/* Sidebar Toggle Button */}
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -119,7 +194,6 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Home</span>}
             </Link>
-            
             <Link 
               href="/chat"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm bg-gradient-to-r from-violet-400 to-violet-400 text-white transition-colors"
@@ -130,11 +204,9 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Chat</span>}
             </Link>
-            
             <Link 
               href="/models"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm t
-              ext-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
               title={!isOpen ? "Models" : ""}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -142,14 +214,34 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Models</span>}
             </Link>
+
+            <Link 
+              href="/storage"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
+              title={!isOpen ? "Storage" : ""}
+            >
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10M5 4h14l-1 13a2 2 0 01-2 2H8a2 2 0 01-2-2L5 4z" />
+              </svg>
+              {isOpen && <span>Storage</span>}
+            </Link>
+
           </nav>
         </div>
 
-        {/* Token Count */}
+        {/* Tokens + Buy */}
         {isOpen && (
           <div className="px-4 py-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-violet-200 to-violet-200 text-black rounded-full text-sm">
-              <span>Tokens: {tokenCount}</span>
+              <span>Tokens: {myCredits?.toString?.() ?? '-'}</span>
+              <button
+                onClick={handleBuyBundle}
+                disabled={!isConnected || !bundlePrice || isBuying}
+                className="ml-2 px-2 py-0.5 bg-violet-500 text-white rounded-full hover:bg-violet-600 disabled:opacity-50"
+                title="Buy 1 bundle"
+              >
+                {isBuying ? 'Buying…' : 'Buy'}
+              </button>
             </div>
           </div>
         )}
@@ -211,11 +303,7 @@ const ChatPage = () => {
                 <div
                   {...(!ready && {
                     'aria-hidden': true,
-                    style: {
-                      opacity: 0,
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                    },
+                    style: { opacity: 0, pointerEvents: 'none', userSelect: 'none' },
                   })}
                 >
                   {(() => {
@@ -236,7 +324,7 @@ const ChatPage = () => {
                         </button>
                       );
                     }
-                    
+
                     return (
                       <div className="flex flex-col gap-2">
                         <button
@@ -282,7 +370,6 @@ const ChatPage = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              
               {showModelDropdown && (
                 <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                   {models.map((model) => (
@@ -302,7 +389,7 @@ const ChatPage = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col w-full">
             {/* Chat messages */}
@@ -345,36 +432,38 @@ const ChatPage = () => {
               <div className="relative w-full max-w-3xl mx-auto">
                 <div className="flex items-center bg-white border border-gray-200 rounded-full px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
                   {/* File Attach Icon */}
-                <button className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                </button>
+                  <button className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </button>
 
-                {/* Input Field */}
-                <input
-                  type="text"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleSendMessage();
-                    }
-                  }}
-                  placeholder="Ask anything"
-                  className="flex-1 px-3 py-1 text-gray-900 placeholder-gray-500 bg-transparent border-none outline-none resize-none font-inter"
-                />
+                  {/* Input Field */}
+                  <input
+                    type="text"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder="Ask anything"
+                    className="flex-1 px-3 py-1 text-gray-900 placeholder-gray-500 bg-transparent border-none outline-none resize-none font-inter"
+                  />
 
-                {/* Send Icon */}
-                <button 
-                  onClick={handleSendMessage}
-                  className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
-              </div>
+                  {/* Send Icon */}
+                  <button 
+                    onClick={handleSendMessage}
+                    className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors"
+                    disabled={isUsingPrompt}
+                    title={isUsingPrompt ? 'Waiting for transaction…' : 'Send'}
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                </div>
 
                 {/* Footer Text */}
                 <div className="text-center mt-3">
