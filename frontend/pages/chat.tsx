@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount } from 'wagmi';
+import { encode, isWithinTokenLimit } from 'gpt-tokenizer';
 import {
   useCheckUserCredits,
   useCheckBundlePrice,
@@ -97,7 +98,10 @@ const ChatPage = () => {
     try {
       resetUsePrompt();
       // User signs/submits the tx
-      await usePrompt(0n, 1n);
+      // Compute token usage for this user message (OpenAI-style tokenizer)
+      const tokenIds = encode(message);
+      const tokensUsed = BigInt(tokenIds.length);
+      await usePrompt(0n, tokensUsed);
       // Wait until the transaction is actually confirmed on-chain before proceeding
       const waitForConfirmation = async (timeoutMs = 120000) => {
         const start = Date.now();
