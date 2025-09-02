@@ -7,12 +7,12 @@ export const useUsePrompt = () => {
   const { writeContract, data: txHash, isPending: isWriting, error: writeError, reset: resetWrite } = useWriteContract();
   const { data: receipt, isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
-  const usePrompt = async (llmId: number | string | bigint) => {
+  const usePrompt = async (llmId: number | string | bigint, tokensUsed: number | string | bigint) => {
     await writeContract({
       abi: ABI as any,
       address: CONTRACT_ADDRESS as `0x${string}`,
       functionName: 'usePrompt',
-      args: [toBigIntSafe(llmId)],
+      args: [toBigIntSafe(llmId), toBigIntSafe(tokensUsed)],
     });
   };
 

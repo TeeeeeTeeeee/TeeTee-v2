@@ -56,6 +56,7 @@ const TestPage: NextPage = () => {
   // Inputs
   const [bundlesToBuy, setBundlesToBuy] = useState<number>(1);
   const [usePromptId, setUsePromptId] = useState<string>('0');
+  const [usePromptTokens, setUsePromptTokens] = useState<string>('1');
   const [lookupUser, setLookupUser] = useState<string>('');
   const [lookupId, setLookupId] = useState<string>('0');
 
@@ -94,7 +95,7 @@ const TestPage: NextPage = () => {
     if (!isConnected) return;
     resetUsePrompt();
     try {
-      await usePrompt(toBigIntSafe(usePromptId));
+      await usePrompt(toBigIntSafe(usePromptId), toBigIntSafe(usePromptTokens));
     } catch (e) {}
   };
 
@@ -203,7 +204,7 @@ const TestPage: NextPage = () => {
           )}
         </Section>
 
-        <Section title="usePrompt(llmId)">
+        <Section title="usePrompt(llmId, tokensUsed)">
           <div className="flex flex-wrap items-end gap-3">
             <label className="flex flex-col">
               <span className="text-sm text-gray-600">LLM ID</span>
@@ -212,6 +213,16 @@ const TestPage: NextPage = () => {
                 min={0}
                 value={usePromptId}
                 onChange={(e) => setUsePromptId(e.target.value)}
+                className="border rounded px-3 py-2 w-40"
+              />
+            </label>
+            <label className="flex flex-col">
+              <span className="text-sm text-gray-600">Tokens Used</span>
+              <input
+                type="number"
+                min={1}
+                value={usePromptTokens}
+                onChange={(e) => setUsePromptTokens(e.target.value)}
                 className="border rounded px-3 py-2 w-40"
               />
             </label>

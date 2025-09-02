@@ -260,6 +260,11 @@
         "internalType": "uint256",
         "name": "llmId",
         "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokensUsed",
+        "type": "uint256"
       }
     ],
     "name": "usePrompt",

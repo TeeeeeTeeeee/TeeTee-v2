@@ -92,7 +92,7 @@ const ChatPage = () => {
     try {
       resetUsePrompt();
       // Await here so user signs/submits the tx before we proceed
-      await usePrompt(0n);
+      await usePrompt(0n, 1n);
       // Optionally refresh credits after submitting tx
       refetchMyCredits?.();
     } catch (e) {
