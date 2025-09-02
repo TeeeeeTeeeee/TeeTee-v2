@@ -110,4 +110,28 @@ contract CreditUse {
         (bool s2, ) = payable(entry.host2).call{value: perHostAmount}("");
         require(s2, "Transfer to host2 failed");
     }
+
+    function editRegistedLLM(
+        uint256 id,
+        address host1,
+        address host2,
+        string calldata shardUrl1,
+        string calldata shardUrl2,
+        string calldata modelName
+    ) external onlyOwner {
+        require(id < hostedLLMs.length, "Invalid LLM");
+        require(host1 != address(0) && host2 != address(0), "Invalid host");
+        require(
+            bytes(shardUrl1).length > 0 && bytes(shardUrl2).length > 0,
+            "Invalid URL"
+        );
+        require(bytes(modelName).length > 0, "Invalid model");
+
+        HostedLLMEntry storage e = hostedLLMs[id];
+        e.host1 = host1;
+        e.host2 = host2;
+        e.shardUrl1 = shardUrl1;
+        e.shardUrl2 = shardUrl2;
+        e.modelName = modelName;
+    }
 }
