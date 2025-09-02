@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "quotes": [
+    "The only way to do great work is to love what you do. - Steve Jobs",
+    "Life is what happens to you while you're busy making other plans. - John Lennon",
+    "The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt",
+    "In the middle of difficulty lies opportunity. - Albert Einstein",
+    "Success is not final, failure is not fatal: it is the courage to continue that counts. - Winston Churchill",
+    "The only impossible journey is the one you never begin. - Tony Robbins",
+    "Innovation distinguishes between a leader and a follower. - Steve Jobs",
+    "Your time is limited, don't waste it living someone else's life. - Steve Jobs",
+    "Be yourself; everyone else is already taken. - Oscar Wilde",
+    "Two things are infinite: the universe and human stupidity; and I'm not sure about the universe. - Albert Einstein"
+  ],
+  "metadata": {
+    "created": "2025-08-19T09:30:00.000Z",
+    "description": "Inspirational quotes for AI agent inference testing",
+    "totalQuotes": 10,
+    "category": "inspirational"
+  }
+}

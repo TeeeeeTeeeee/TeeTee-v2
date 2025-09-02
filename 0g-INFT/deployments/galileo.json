@@ -1,0 +1,150 @@
+{
+  "oracle": {
+    "address": "0x567e70a52AB420c525D277b0020260a727A735dB",
+    "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+    "deploymentTx": "0xee402097b2060e8f7c4cbc69e32d314b061ceb53c149266498401c955b487cfe",
+    "blockNumber": 5222811,
+    "timestamp": "2025-08-19T14:14:33.933Z",
+    "contractName": "OracleStub",
+    "network": {
+      "name": "galileo",
+      "chainId": "16601"
+    }
+  },
+  "dataVerifier": {
+    "address": "0xc13C532A60467c66bf0FFbeF52cD851bF1bC7fC6",
+    "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+    "deploymentTx": "0xe656ec88312e038b513c0be0782eb436fed2a3035faf1953580b3d6da30a80e1",
+    "blockNumber": 5257603,
+    "timestamp": "2025-08-20T07:46:41.810Z",
+    "contractName": "DataVerifierAdapter",
+    "oracleAddress": "0x567e70a52AB420c525D277b0020260a727A735dB",
+    "network": {
+      "name": "galileo",
+      "chainId": "16601"
+    }
+  },
+  "inft": {
+    "address": "0x67dDE9dF36Eb6725f265bc8A1908628e8d4AF9DA",
+    "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+    "deploymentTx": "0x6ee71bc0937f64d941213a7c74cda515c63f04ad432e7dca729f5b68c06d8ad1",
+    "blockNumber": 5257603,
+    "timestamp": "2025-08-20T07:46:41.862Z",
+    "contractName": "INFT",
+    "dataVerifierAddress": "0xc13C532A60467c66bf0FFbeF52cD851bF1bC7fC6",
+    "tokenName": "0G Intelligent NFTs",
+    "tokenSymbol": "0G-INFT",
+    "network": {
+      "name": "galileo",
+      "chainId": "16601"
+    }
+  },
+  "mintedTokens": [
+    {
+      "tokenId": 1,
+      "owner": "0x1234567890123456789012345678901234567890",
+      "encryptedURI": "0g://storage/0xe3bf3e775364d9eb24fe11106ad035bebda6c2b0f2b0586ad4397246c864aedc",
+      "metadataHash": "0xa43868e7e1335a6070b9ef4ec1c89a23050d73d3173f487557c56b51f2c34e3b",
+      "storageRootHash": "0xe3bf3e775364d9eb24fe11106ad035bebda6c2b0f2b0586ad4397246c864aedc",
+      "mintTransaction": {
+        "hash": "0xfec0c379ae2932ddecc5938ef15ead00963b1f28c2c1d718f48cedb7524e8b5f",
+        "gasUsed": "190138",
+        "timestamp": "2025-08-19T14:18:44.194Z"
+      },
+      "phase1Storage": {
+        "encryptionKey": "0xa3741dcea555600155d33406b8e1b255f3916d728d2eb595bc6c80b4afcdec62",
+        "iv": "0xa64da9cbc7e6315ed3a4c048",
+        "tag": "0xc4d64ebeba23782c1d95d1579c017dc8",
+        "storageTimestamp": "2025-08-19T13:28:57.872Z"
+      },
+      "phase5Authorization": {
+        "testResults": {
+          "authorizationGrantTx": "0x27663c97f40a0415d846ff9917a7d2addfa6e93468acc41a972fe9f30b041063",
+          "authorizationGrantGasUsed": "93292",
+          "secondAuthorizationTx": "0x8531c5aadbb860b1c1c9cd18522d99580584f82df54b89c69d51c8653e0726e1",
+          "secondAuthorizationGasUsed": "75964",
+          "authorizationRevokeTx": "0x6ff13f895cf729c857e3684c089a7ee32111d17da374fa4a45c0cc586201e48f",
+          "authorizationRevokeGasUsed": "39004",
+          "functionsVerified": [
+            "authorizeUsage(uint256 tokenId, address user)",
+            "revokeUsage(uint256 tokenId, address user)",
+            "isAuthorized(uint256 tokenId, address user)",
+            "authorizedUsersOf(uint256 tokenId)"
+          ],
+          "eventsVerified": [
+            "AuthorizedUsage(uint256 indexed tokenId, address indexed user, bool authorized)"
+          ],
+          "testTimestamp": "2025-08-19T14:25:00.000Z"
+        },
+        "currentAuthorizations": [
+          {
+            "user": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+            "authorized": true,
+            "timestamp": "2025-08-19T14:25:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "tokenId": 1,
+      "owner": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+      "encryptedURI": "0g://storage/0x564d46858f7d4e79361efec80361aabb3647f19f361f4a8413970fc04d4907ff",
+      "metadataHash": "0xa69e2a2a1373d8e8e8cf407a78e88e55a061c756267f32c4528014ee61065547",
+      "storageRootHash": "0x564d46858f7d4e79361efec80361aabb3647f19f361f4a8413970fc04d4907ff",
+      "mintTransaction": {
+        "hash": "0x33c32b8fbb66e74499e7a5d5e5a8d32576af4ffed0d1a92b277cebe069bc7b30",
+        "gasUsed": "190138",
+        "timestamp": "2025-08-20T07:47:21.765Z"
+      },
+      "phase1Storage": {
+        "encryptionKey": "0x7ed61d665f2e4568eff5abf6d661b16236632f5d8f44f61211e41bafe2e2ad91",
+        "iv": "0x5adaddc22dadbb95a10c5cd6",
+        "tag": "0xeb27de60048661b0dd8f33ea9ba06550",
+        "storageTimestamp": "2025-08-20T05:56:02.013Z"
+      }
+    }
+  ],
+  "transferHistory": [
+    {
+      "tokenId": 1,
+      "from": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+      "to": "0x1234567890123456789012345678901234567890",
+      "sealedKey": "0x7b22746f6b656e4964223a312c226e65774f776e6572223a22307831323334353637383930313233343536373839303132333435363738393031323334353637383930222c2274696d657374616d70223a22323032352d30382d31395431353a30303a33322e3030315a222c226f726967696e616c4b657948617368223a2236623664643530363363633134396430373331653130363735366538363265323234633233653835656536653134356231616464613431616338653464613634222c227265456e637279707465644b6579223a2239386665653639623239653435356232633333363763633539633561333763363263373261373337333338643761616334323433633634306366646562643439222c22616c676f726974686d223a224145532d3235362d47434d222c226b657944657269766174696f6e223a22484b44462d534841323536222c226e6f6e6365223a22636566393036666532353737393939356131306166623339227d",
+      "proofHash": "0xe92740d4cbf8fde12773188f85a9d99d6fdfec75e9b7b6626cfefe9ff5da841d",
+      "transaction": {
+        "hash": "0x50fd65b7d6220d3ec32b6a06524fa6c456120c44c7fd32822648e47f2a192870",
+        "gasUsed": "146214",
+        "timestamp": "2025-08-19T15:00:39.216Z"
+      },
+      "transferType": "TEE_ATTESTATION"
+    }
+  ],
+  "dataVerifierNew": {
+    "address": "0xd7EcB21fDDDe3F6DFBe2E7D8ad93fD0F00332C2D",
+    "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+    "deploymentTx": "0x46b08e56cae99f72833676fc0a0013c010cf4c8376878af194f2caf09112a37b",
+    "timestamp": "2025-08-20T07:45:23.540Z",
+    "contractName": "DataVerifierAdapter",
+    "oracleAddress": "0x567e70a52AB420c525D277b0020260a727A735dB",
+    "network": {
+      "name": "galileo",
+      "chainId": "16601"
+    },
+    "note": "Redeployed with correct oracle address for transfer functionality"
+  },
+  "inftNew": {
+    "address": "0x33B1Bcc8d08d167292601f484Ba563ca89133aD2",
+    "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",
+    "deploymentTx": "0x8952ad73f6f63034e7c75303b3419285379eb16e0a7efeb8dbbf2d28b6e4d817",
+    "timestamp": "2025-08-20T07:45:37.810Z",
+    "contractName": "INFT",
+    "dataVerifierAddress": "0xbE6567dD6EB5c3B1d33F1f95373b0D0EC4F0F762",
+    "tokenName": "0G Intelligent NFTs",
+    "tokenSymbol": "0G-INFT",
+    "network": {
+      "name": "galileo",
+      "chainId": "16601"
+    },
+    "note": "Redeployed with correct DataVerifier for transfer functionality"
+  }
+}
