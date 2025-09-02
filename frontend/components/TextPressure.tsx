@@ -173,7 +173,8 @@ const TextPressure: React.FC<TextPressureProps> = ({
         }
         .stroke span {
           position: relative;
-          color: ${textColor};
+          color: ${textColor.includes('gradient') ? 'transparent' : textColor};
+          ${textColor.includes('gradient') ? `background: ${textColor}; -webkit-background-clip: text; background-clip: text;` : ''}
         }
         .stroke span::after {
           content: attr(data-char);
@@ -184,6 +185,14 @@ const TextPressure: React.FC<TextPressureProps> = ({
           z-index: -1;
           -webkit-text-stroke-width: ${strokeWidth}px;
           -webkit-text-stroke-color: ${strokeColor};
+        }
+        .text-pressure-title {
+          ${textColor.includes('gradient') ? `
+            background: ${textColor};
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+          ` : ''}
         }
       `}</style>
 
@@ -199,7 +208,10 @@ const TextPressure: React.FC<TextPressureProps> = ({
                     transformOrigin: 'center top',
                     margin: 0,
                     fontWeight: 100,
-                    color: stroke ? undefined : textColor,
+                    color: stroke ? undefined : (textColor.includes('gradient') ? 'transparent' : textColor),
+                    background: textColor.includes('gradient') ? textColor : undefined,
+                    WebkitBackgroundClip: textColor.includes('gradient') ? 'text' : undefined,
+                    backgroundClip: textColor.includes('gradient') ? 'text' : undefined,
                     letterSpacing: '-0.06em', // Reduce letter spacing
                     padding: '0',
                     width: '100%',

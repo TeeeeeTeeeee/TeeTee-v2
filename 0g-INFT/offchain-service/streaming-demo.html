@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0G INFT Streaming Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, textarea, button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input, textarea {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+        }
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .output {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            min-height: 200px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            border-left: 4px solid #4ecdc4;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .status.connected { background: #4ecdc4; color: white; }
+        .status.streaming { background: #ff9800; color: white; }
+        .status.completed { background: #4caf50; color: white; }
+        .status.error { background: #f44336; color: white; }
+        .token {
+            background: rgba(76, 175, 80, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 1px;
+            display: inline-block;
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .metadata {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 0G INFT Streaming Demo</h1>
+        
+        <form id="inferForm">
+            <div class="form-group">
+                <label for="tokenId">Token ID:</label>
+                <input type="number" id="tokenId" value="1" min="1" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="userAddress">User Address:</label>
+                <input type="text" id="userAddress" value="0x32F91E4E2c60A9C16cAE736D3b42152B331c147F" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="input">Your Request:</label>
+                <textarea id="input" rows="3" placeholder="Enter your request (e.g., 'inspire me with a quote about success')" required>inspire me with a motivational quote</textarea>
+            </div>
+            
+            <button type="submit" id="submitBtn">🎯 Start Streaming Inference</button>
+        </form>
+        
+        <div id="output" class="output">
+            Ready to stream AI responses... 🤖
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('inferForm');
+        const output = document.getElementById('output');
+        const submitBtn = document.getElementById('submitBtn');
+        
+        let eventSource = null;
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (eventSource) {
+                eventSource.close();
+            }
+            
+            const formData = {
+                tokenId: parseInt(document.getElementById('tokenId').value),
+                input: document.getElementById('input').value.trim(),
+                user: document.getElementById('userAddress').value.trim()
+            };
+            
+            if (!formData.input || !formData.user) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            output.innerHTML = '<span class="status connected">🔄 Connecting...</span>\n';
+            submitBtn.disabled = true;
+            submitBtn.textContent = '🔄 Streaming...';
+            
+            try {
+                // Since EventSource doesn't support POST, we'll use fetch with streaming
+                const response = await fetch('/infer/stream', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let fullResponse = '';
+                
+                output.innerHTML = '<span class="status streaming">🎯 Streaming...</span>\n';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    
+                    // Process complete events
+                    const events = buffer.split('\n\n');
+                    buffer = events.pop(); // Keep incomplete event in buffer
+                    
+                    events.forEach(eventData => {
+                        if (eventData.trim()) {
+                            processSSEEvent(eventData.trim());
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                output.innerHTML += `\n<span class="status error">❌ Error: ${error.message}</span>`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '🎯 Start Streaming Inference';
+            }
+        });
+        
+        function processSSEEvent(eventData) {
+            const lines = eventData.split('\n');
+            let eventType = 'message';
+            let data = '';
+            let id = '';
+            
+            lines.forEach(line => {
+                if (line.startsWith('event: ')) {
+                    eventType = line.substring(7);
+                } else if (line.startsWith('data: ')) {
+                    data = line.substring(6);
+                } else if (line.startsWith('id: ')) {
+                    id = line.substring(4);
+                }
+            });
+            
+            if (!data) return;
+            
+            try {
+                const parsedData = JSON.parse(data);
+                
+                switch (eventType) {
+                    case 'start':
+                        output.innerHTML += `\n<div class="metadata">
+📊 <strong>Session Started</strong><br>
+🔗 Provider: ${parsedData.provider}<br>
+🤖 Model: ${parsedData.model}<br>
+🌡️ Temperature: ${parsedData.temperature}<br>
+🆔 Request ID: ${parsedData.requestId}
+</div>\n`;
+                        break;
+                        
+                    case 'token':
+                        if (parsedData.content) {
+                            output.innerHTML += `<span class="token">${escapeHtml(parsedData.content)}</span>`;
+                            output.scrollTop = output.scrollHeight;
+                        }
+                        break;
+                        
+                    case 'completion':
+                        output.innerHTML += `\n\n<span class="status completed">✅ Complete</span>
+                        
+<div class="metadata">
+📝 <strong>Full Response:</strong><br>
+${escapeHtml(parsedData.fullResponse)}
+
+📊 <strong>Statistics:</strong><br>
+🔢 Total Tokens: ${parsedData.totalTokens}<br>
+✅ Status: ${parsedData.done ? 'Complete' : 'Partial'}
+</div>`;
+                        break;
+                        
+                    case 'error':
+                        output.innerHTML += `\n<span class="status error">❌ Error: ${escapeHtml(parsedData.error)}</span>`;
+                        break;
+                }
+                
+            } catch (e) {
+                output.innerHTML += `\n<span class="status error">⚠️ Parse error: ${escapeHtml(data)}</span>`;
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

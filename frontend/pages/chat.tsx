@@ -218,6 +218,7 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Models</span>}
             </Link>
+
             <Link 
               href="/storage"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
@@ -228,6 +229,7 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Storage</span>}
             </Link>
+
           </nav>
         </div>
 
@@ -280,9 +282,6 @@ const ChatPage = () => {
             ) : (
               isOpen && (
                 <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                  <svg className="w-8 h-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
                   <p className="text-sm">No conversations yet.</p>
                 </div>
               )
@@ -316,7 +315,10 @@ const ChatPage = () => {
                       return (
                         <button 
                           onClick={openConnectModal}
-                          className="w-full bg-gradient-to-r from-violet-400 to-violet-400 text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-3"
+                          className="w-full text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-3"
+                          style={{
+                            background: 'linear-gradient(to right, #a78bfa, #d8b4fe)'
+                          }}
                           title={!isOpen ? "Connect Wallet" : ""}
                         >
                           <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Renderer, Camera, Geometry, Program, Mesh } from "ogl";
 
 interface ParticlesProps {
@@ -107,27 +107,36 @@ const Particles: React.FC<ParticlesProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mouseRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isBrowser, setIsBrowser] = useState(false);
+
+  // Only initialize on client-side
+  useEffect(() => {
+    setIsBrowser(true);
+  }, []);
 
   useEffect(() => {
+    // Early return if we're not in the browser or container is not available
+    if (!isBrowser || !containerRef.current) return;
+    
     const container = containerRef.current;
-    if (!container) return;
+    
+    try {
+      const renderer = new Renderer({ depth: false, alpha: true });
+      const gl = renderer.gl;
+      container.appendChild(gl.canvas);
+      gl.clearColor(0, 0, 0, 0);
 
-    const renderer = new Renderer({ depth: false, alpha: true });
-    const gl = renderer.gl;
-    container.appendChild(gl.canvas);
-    gl.clearColor(0, 0, 0, 0);
+      const camera = new Camera(gl, { fov: 15 });
+      camera.position.set(0, 0, cameraDistance);
 
-    const camera = new Camera(gl, { fov: 15 });
-    camera.position.set(0, 0, cameraDistance);
-
-    const resize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      renderer.setSize(width, height);
-      camera.perspective({ aspect: gl.canvas.width / gl.canvas.height });
-    };
-    window.addEventListener("resize", resize, false);
-    resize();
+      const resize = () => {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        renderer.setSize(width, height);
+        camera.perspective({ aspect: gl.canvas.width / gl.canvas.height });
+      };
+      window.addEventListener("resize", resize, false);
+      resize();
 
     // Enhanced mouse move handler that works even when mouse is over other elements
     const handleMouseMove = (e: MouseEvent) => {
@@ -229,7 +238,11 @@ const Particles: React.FC<ParticlesProps> = ({
         container.removeChild(gl.canvas);
       }
     };
+    } catch (error) {
+      console.error("Error initializing WebGL renderer:", error);
+    }
   }, [
+    isBrowser,
     particleCount,
     particleSpread,
     speed,

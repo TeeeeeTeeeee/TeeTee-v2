@@ -3,9 +3,6 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -22,5 +19,27 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Inter", sans-serif;
+}
+
+/* Custom styling for RainbowKit Connect Button */
+[data-rk] button[data-testid="rk-connect-button"] {
+  background: linear-gradient(to right, #a78bfa, #d8b4fe) !important;
+  border: none !important;
+  color: white !important;
+}
+
+[data-rk] button[data-testid="rk-connect-button"]:hover {
+  opacity: 0.9 !important;
+}
+
+/* Also target the account button when connected */
+[data-rk] button[data-testid="rk-account-button"] {
+  background: linear-gradient(to right, #a78bfa, #d8b4fe) !important;
+  border: none !important;
+  color: white !important;
+}
+
+[data-rk] button[data-testid="rk-account-button"]:hover {
+  opacity: 0.9 !important;
 }
