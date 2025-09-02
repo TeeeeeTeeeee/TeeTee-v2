@@ -21,6 +21,7 @@
     "ethers": "^6.13.1",
     "formidable": "^3.5.4",
     "framer-motion": "^12.23.12",
+    "gpt-tokenizer": "^3.0.1",
     "gsap": "^3.13.0",
     "next": "^15.5.2",
     "ogl": "^1.0.11",
