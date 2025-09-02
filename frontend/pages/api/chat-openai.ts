@@ -1,16 +1,17 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import OpenAI from 'openai';
 
-const client = new OpenAI();
-
+// RedPill Chat Completions API proxy
+// Expects: { messages: [{role, content}], model?: string }
+// Env: REDPILL_API_KEY
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: 'Missing OPENAI_API_KEY in server environment' });
+  const apiKey = process.env.REDPILL_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: 'Missing REDPILL_API_KEY in server environment' });
   }
 
   try {
@@ -23,22 +24,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'messages array required' });
     }
 
-    const usedModel = model || 'gpt-5-nano-2025-08-07';
+    // Default to gpt-4o-mini as requested
+    const usedModel = model || 'gpt-4o-mini';
 
-    // Build a single text prompt for the Responses API
-    const prompt = Array.isArray(messages)
-      ? messages.map((m) => `${m.role}: ${m.content}`).join('\n')
-      : messages;
+    // Ensure we send an array of messages per RedPill's chat completions format
+    const payloadMessages = Array.isArray(messages)
+      ? messages
+      : [{ role: 'user', content: String(messages) }];
 
-    const response = await client.responses.create({
-      model: usedModel,
-      input: prompt,
+    const rpResp = await fetch('https://api.red-pill.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: usedModel,
+        messages: payloadMessages,
+        temperature: 0.7,
+      }),
     });
 
-    const text = (response as any).output_text ?? '';
+    if (!rpResp.ok) {
+      const text = await rpResp.text();
+      return res.status(rpResp.status).json({ error: `RedPill request failed: ${text}` });
+    }
+
+    const data = await rpResp.json();
+    const text = data?.choices?.[0]?.message?.content ?? '';
     return res.status(200).json({ text });
   } catch (err: any) {
-    console.error('OpenAI API error:', err);
+    console.error('RedPill API error:', err);
     return res.status(500).json({ error: err?.message || 'Unknown error' });
   }
 }

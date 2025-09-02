@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -27,12 +27,11 @@ interface Message {
 
 const ChatPage = () => {
   const [isOpen, setIsOpen] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('gpt-5 nano');
+  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const OPENAI_MODEL = 'gpt-5-nano-2025-08-07';
   const [activeConversation, setActiveConversation] = useState<number | null>(null);
 
   const { address, isConnected } = useAccount();
@@ -41,7 +40,13 @@ const ChatPage = () => {
   const { data: myCredits, refetch: refetchMyCredits } = useCheckUserCredits(address);
   const { data: bundlePrice } = useCheckBundlePrice();
   const { buyCredits, isWriting: isBuying, isConfirmed: isBuyConfirmed, resetWrite: resetBuy } = useBuyCredits();
-  const { usePrompt, isWriting: isUsingPrompt, resetWrite: resetUsePrompt } = useUsePrompt();
+  const { usePrompt, isWriting: isUsingPrompt, resetWrite: resetUsePrompt, isConfirming, isConfirmed } = useUsePrompt();
+
+  // Track latest confirmation state to avoid stale closures while waiting
+  const isConfirmedRef = useRef<boolean>(false);
+  useEffect(() => {
+    isConfirmedRef.current = !!isConfirmed;
+  }, [isConfirmed]);
 
   useEffect(() => {
     if (isBuyConfirmed) {
@@ -50,9 +55,9 @@ const ChatPage = () => {
   }, [isBuyConfirmed, refetchMyCredits]);
 
   const models = [
-    'gpt-5 nano',
-    'gpt-5 micro',
-    'gpt-5 small',
+    'gpt-4o-mini',
+    'gpt-4o',
+    'gpt-4.1-mini',
   ];
 
   // Sample conversations data (empty for now)
@@ -91,12 +96,25 @@ const ChatPage = () => {
 
     try {
       resetUsePrompt();
-      // Await here so user signs/submits the tx before we proceed
+      // User signs/submits the tx
       await usePrompt(0n, 1n);
-      // Optionally refresh credits after submitting tx
+      // Wait until the transaction is actually confirmed on-chain before proceeding
+      const waitForConfirmation = async (timeoutMs = 120000) => {
+        const start = Date.now();
+        while (!isConfirmedRef.current) {
+          if (Date.now() - start > timeoutMs) {
+            throw new Error('Timed out waiting for on-chain confirmation');
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      };
+
+      await waitForConfirmation();
+      // Refresh credits after confirmation
       refetchMyCredits?.();
-    } catch (e) {
-      setMessages(prev => prev.concat({ id: Date.now() + 1, text: 'Transaction was rejected or failed. No credits consumed.', isUser: false, timestamp: new Date() }));
+    } catch (e: any) {
+      const errMsg = e?.message || 'Transaction was rejected or failed. No credits consumed.';
+      setMessages(prev => prev.concat({ id: Date.now() + 1, text: errMsg, isUser: false, timestamp: new Date() }));
       return;
     }
 
@@ -107,7 +125,7 @@ const ChatPage = () => {
       const resp = await fetch('/api/chat-openai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, model: OPENAI_MODEL }),
+        body: JSON.stringify({ messages: history, model: selectedModel }),
       });
       if (!resp.ok) {
         const errText = await resp.text();
