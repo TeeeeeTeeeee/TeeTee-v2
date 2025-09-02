@@ -43,12 +43,13 @@ contract CreditUse {
         return userCredits[user];
     }
 
-    function usePrompt(uint256 llmId) external {
-        require(userCredits[msg.sender] > 0, "No prompt credits");
+    function usePrompt(uint256 llmId, uint256 tokensUsed) external {
+        require(tokensUsed > 0, "Zero tokens");
         require(llmId < hostedLLMs.length, "Invalid LLM");
+        require(userCredits[msg.sender] >= tokensUsed, "Insufficient credits");
 
-        userCredits[msg.sender] -= 1;
-        hostedLLMs[llmId].poolBalance += 1;
+        userCredits[msg.sender] -= tokensUsed;
+        hostedLLMs[llmId].poolBalance += tokensUsed;
     }
 
     function registerLLM(
