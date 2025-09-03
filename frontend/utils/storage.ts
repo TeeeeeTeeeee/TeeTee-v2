@@ -5,6 +5,8 @@ import { ZgFile, Indexer, Batcher, KvClient } from '@0glabs/0g-ts-sdk';
 import { ethers } from 'ethers';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import { Readable} from 'stream';
 
 // Network Constants (allow override via env if needed)
 const RPC_URL: string = process.env.ZG_RPC_URL || 'https://evmrpc-testnet.0g.ai/';
@@ -130,6 +132,113 @@ export async function downloadFile(rootHash: string, outputPath: string): Promis
   if (err !== null && err !== undefined) {
     throw new Error(`Download error: ${String(err)}`);
   }
+}
+
+export async function uploadStream(
+  stream: Readable,
+  filename: string,
+): Promise<{ rootHash: string | undefined; txHash: string }> {
+  if (!(stream instanceof Readable)) { 
+    throw new Error('uploadStream: invalid stream');
+  }
+  if (!filename || typeof filename !== 'string') {
+    throw new Error('uploadStream: invalid filename');
+  }
+
+  const { signer } = getSigner();
+
+  // Create file object from stream if supported, else fallback to temp file
+  let file: any;
+  const maybeFromStream = (ZgFile as any)?.fromStream;
+  if (typeof maybeFromStream === 'function') {
+    file = await maybeFromStream.call(ZgFile, stream, filename);
+  } else {
+    // Fallback: write to a temporary file then use fromFilePath
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'zg-'));
+    const tmpPath = path.join(tmpDir, `${Date.now()}_${path.basename(filename)}`);
+    await new Promise<void>((resolve, reject) => {
+      const out = fs.createWriteStream(tmpPath);
+      stream.pipe(out);
+      out.on('finish', () => resolve());
+      out.on('error', (e) => reject(e));
+      stream.on('error', (e) => reject(e));
+    });
+    file = await ZgFile.fromFilePath(tmpPath);
+  }
+
+  try {
+    const [tree, treeErr]: [unknown, unknown] = await file.merkleTree();
+    if (treeErr !== null && treeErr !== undefined) {
+      throw new Error(`Error generating Merkle tree: ${String(treeErr)}`);
+    }
+
+    let rootHash = extractRootHashFromTree(tree);
+
+    // Upload to network
+    const [tx, uploadErr]: [any, any] = await indexer.upload(
+      file,
+      RPC_URL,
+      signer as unknown as any,
+    );
+    if (uploadErr !== null && uploadErr !== undefined) {
+      throw new Error(`Upload error: ${String(uploadErr)}`);
+    }
+
+    rootHash = rootHash ?? extractRootHashFromTx(tx);
+
+    const txHash = normalizeTxHash(tx);
+
+    return { rootHash, txHash };
+  } finally {
+    await file.close();
+  }
+}
+
+export async function downloadStream(rootHash: string): Promise<Readable> {
+  if (!rootHash || typeof rootHash !== 'string') {
+    throw new Error('downloadStream: invalid rootHash');
+  }
+  const maybeDownloadAsStream = (indexer as any)?.downloadFileAsStream;
+  if (typeof maybeDownloadAsStream === 'function') {
+    const stream: Readable = (await maybeDownloadAsStream.call(indexer, rootHash)) as Readable;
+    if (!(stream instanceof Readable)) {
+      throw new Error('downloadStream: failed to obtain a readable stream');
+    }
+    return stream;
+  }
+
+  // Fallback: download to a temp file and return a read stream
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'zg-'));
+  const tmpPath = path.join(tmpDir, `${Date.now()}_${rootHash}.bin`);
+
+  const err: unknown = await indexer.download(rootHash, tmpPath, true);
+  if (err !== null && err !== undefined) {
+    throw new Error(`downloadStream fallback error: ${String(err)}`);
+  }
+
+  return fs.createReadStream(tmpPath);
+
+}
+
+export async function downloadStreamToFile(rootHash: string, outputPath: string): Promise<void> {
+  if (!rootHash || typeof rootHash !== 'string') {
+    throw new Error('downloadStreamToFile: invalid rootHash');
+  }
+  if (!outputPath || typeof outputPath !== 'string') {
+    throw new Error('downloadStreamToFile: invalid outputPath');
+  }
+
+  await ensureDirForFile(outputPath);
+
+  const stream = await downloadStream(rootHash);
+
+  await new Promise<void>((resolve, reject) => {
+    const write = fs.createWriteStream(outputPath);
+    stream.pipe(write);
+    write.on('finish', () => resolve());
+    write.on('error', (err) => reject(err));
+    stream.on('error', (err) => reject(err));
+  });
 }
 
 export const _internal = { getSigner };
