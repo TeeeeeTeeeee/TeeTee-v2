@@ -28,6 +28,59 @@ export default function StoragePage() {
   const [downloadError, setDownloadError] = useState<string>('');
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
 
+  // Simulated Chatbot state
+  type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string; timestamp: number };
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState<string>('');
+  const [chatSaving, setChatSaving] = useState<boolean>(false);
+  const [chatSaveError, setChatSaveError] = useState<string>('');
+  const [chatSaveResult, setChatSaveResult] = useState<{ filename: string; rootHash: string | undefined; txHash: string } | null>(null);
+  const [chatFilename, setChatFilename] = useState<string>('chat_session.txt');
+
+  function handleClearChat() {
+    setChatMessages([]);
+    setChatSaveResult(null);
+    setChatSaveError('');
+  }
+
+  function handleChatSend(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const content = chatInput.trim();
+    if (!content) return;
+    const now = Date.now();
+    const userMsg: ChatMessage = { role: 'user', content, timestamp: now };
+    const assistantMsg: ChatMessage = {
+      role: 'assistant',
+      content: `Simulated response: ${content}`,
+      timestamp: now + 1,
+    };
+    setChatMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setChatInput('');
+  }
+
+  async function handleChatSave() {
+    setChatSaving(true);
+    setChatSaveError('');
+    setChatSaveResult(null);
+    try {
+      const res = await fetch('/api/chat-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: chatMessages, filename: chatFilename }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error((data as any)?.error || 'Failed to save chat session');
+      const result = data as { filename: string; rootHash?: string; txHash: string };
+      setChatSaveResult({ filename: result.filename, rootHash: result.rootHash, txHash: result.txHash });
+      if (result.rootHash) setRootHash(result.rootHash);
+      if (result.filename) setDownloadFilename(result.filename);
+    } catch (err: any) {
+      setChatSaveError(err?.message || String(err));
+    } finally {
+      setChatSaving(false);
+    }
+  }
+
   async function handleUpload(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setUploadLoading(true);
@@ -154,6 +207,77 @@ export default function StoragePage() {
               </div>
             </div>
           )}
+        </section>
+
+        <section className="mb-12 p-5 border rounded-lg">
+          <h2 className="text-xl font-medium mb-4">Simulated Chatbot</h2>
+          <div className="space-y-4">
+            <div className="border rounded-md p-3 max-h-64 overflow-auto bg-white">
+              {chatMessages.length === 0 ? (
+                <p className="text-sm text-gray-500">No messages yet. Send a message to start.</p>
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {chatMessages.map((m, idx) => (
+                    <li key={idx} className="flex gap-2">
+                      <span className="font-medium">{m.role}:</span>
+                      <span className="whitespace-pre-wrap break-words">{m.content}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <form onSubmit={handleChatSend} className="flex gap-2">
+              <input
+                type="text"
+                className="flex-1 px-3 py-2 border rounded-md"
+                placeholder="Type a message..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+              />
+              <button type="submit" className="px-4 py-2 rounded-md bg-black text-white">Send</button>
+            </form>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium mb-1">Save Filename</label>
+                <input
+                  type="text"
+                  className="w-full px-3 py-2 border rounded-md"
+                  value={chatFilename}
+                  onChange={(e) => setChatFilename(e.target.value)}
+                />
+              </div>
+              <div className="flex items-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleChatSave}
+                  disabled={chatSaving || chatMessages.length === 0}
+                  className="px-4 py-2 rounded-md bg-black text-white disabled:opacity-60"
+                >
+                  {chatSaving ? 'Saving...' : 'End & Save Session'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearChat}
+                  className="px-4 py-2 rounded-md border"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {chatSaveError && <p className="text-sm text-red-600">Error: {chatSaveError}</p>}
+
+            {chatSaveResult && (
+              <div className="text-sm break-all">
+                <div><span className="font-medium">Saved Filename:</span> {chatSaveResult.filename}</div>
+                <div><span className="font-medium">Root Hash:</span> {safe(chatSaveResult.rootHash)}</div>
+                <div><span className="font-medium">Tx Hash:</span> {safe(chatSaveResult.txHash)}</div>
+                <div className="mt-2 text-gray-600">You can use the Root Hash in the Download section below to retrieve the transcript.</div>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="p-5 border rounded-lg">
