@@ -23,7 +23,7 @@ export default function StoragePage() {
 
   // Download state (stream to browser)
   const [rootHash, setRootHash] = useState<string>('');
-  const [downloadFilename, setDownloadFilename] = useState<string>('downloaded-model.bin');
+  const [downloadFilename, setDownloadFilename] = useState<string>('downloaded.txt');
   const [downloadLoading, setDownloadLoading] = useState<boolean>(false);
   const [downloadError, setDownloadError] = useState<string>('');
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
