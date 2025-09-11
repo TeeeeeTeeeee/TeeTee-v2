@@ -16,7 +16,11 @@ contract CreditUse {
         string shardUrl1;
         string shardUrl2;
         string modelName;
-        uint256 poolBalance;
+        uint256 poolBalance; 
+        uint256 totalTimeHost1;   // total tracking time in minutes for host1
+        uint256 totalTimeHost2;   // total tracking time in minutes for host2
+        uint256 downtimeHost1;
+        uint256 downtimeHost2;
     }
 
     HostedLLMEntry[] public hostedLLMs;
@@ -47,7 +51,7 @@ contract CreditUse {
         require(tokensUsed > 0, "Zero tokens");
         require(llmId < hostedLLMs.length, "Invalid LLM");
         require(userCredits[msg.sender] >= tokensUsed, "Insufficient credits");
-
+        
         userCredits[msg.sender] -= tokensUsed;
         hostedLLMs[llmId].poolBalance += tokensUsed;
     }
@@ -57,7 +61,9 @@ contract CreditUse {
         address host2,
         string calldata shardUrl1,
         string calldata shardUrl2,
-        string calldata modelName
+        string calldata modelName,
+        uint256 totalTimeHost1,
+        uint256 totalTimeHost2
     ) external onlyOwner returns (uint256 llmId) {
         require(host1 != address(0) && host2 != address(0), "Invalid host");
         require(
@@ -65,6 +71,8 @@ contract CreditUse {
             "Invalid URL"
         );
         require(bytes(modelName).length > 0, "Invalid model");
+        require(totalTimeHost1 > 0 || totalTimeHost2 > 0, "At least one total time > 0");
+
         hostedLLMs.push(
             HostedLLMEntry({
                 host1: host1,
@@ -72,10 +80,33 @@ contract CreditUse {
                 shardUrl1: shardUrl1,
                 shardUrl2: shardUrl2,
                 modelName: modelName,
-                poolBalance: 0
+                poolBalance: 0,
+                totalTimeHost1: totalTimeHost1,
+                totalTimeHost2: totalTimeHost2,
+                downtimeHost1: 0,
+                downtimeHost2: 0
             })
         );
         llmId = hostedLLMs.length - 1;
+    }
+    
+    function reportDowntime(uint256 llmId, uint256 minutesDownHost1, uint256 minutesDownHost2) external onlyOwner {
+        require(llmId < hostedLLMs.length, "Invalid LLM");
+        HostedLLMEntry storage entry = hostedLLMs[llmId];
+
+        if (minutesDownHost1 > 0) {
+            entry.downtimeHost1 += minutesDownHost1;
+            if (entry.downtimeHost1 > entry.totalTimeHost1) {
+                entry.downtimeHost1 = entry.totalTimeHost1; 
+            }
+        }
+
+        if (minutesDownHost2 > 0) {
+            entry.downtimeHost2 += minutesDownHost2;
+            if (entry.downtimeHost2 > entry.totalTimeHost2) {
+                entry.downtimeHost2 = entry.totalTimeHost2;
+            }
+        }
     }
 
     function getHostedLLM(
@@ -91,25 +122,36 @@ contract CreditUse {
         uint256 credits = entry.poolBalance;
         require(credits > 0, "Nothing to withdraw");
 
-        uint256 rem = credits % 2;
-        uint256 evenCredits = credits - rem;
+        entry.poolBalance = 0;
 
-        if (rem == 1) {
-            entry.poolBalance = 1;
-        } else {
-            entry.poolBalance = 0;
+        uint256 host1Reward = 0;
+        uint256 host2Reward = 0;
+
+        if (entry.totalTimeHost1 > 0) {
+            uint256 host1UptimePercent =
+                ((entry.totalTimeHost1 - entry.downtimeHost1) * 1e18) / entry.totalTimeHost1;
+            host1Reward = (credits * CREDIT_PRICE_WEI * host1UptimePercent) / (2 * 1e18);
         }
 
-        uint256 perHostAmount = (evenCredits / 2) * CREDIT_PRICE_WEI;
-        uint256 totalAmount = perHostAmount * 2;
-        require(
-            address(this).balance >= totalAmount,
-            "Insufficient contract balance"
-        );
-        (bool s1, ) = payable(entry.host1).call{value: perHostAmount}("");
-        require(s1, "Transfer to host1 failed");
-        (bool s2, ) = payable(entry.host2).call{value: perHostAmount}("");
-        require(s2, "Transfer to host2 failed");
+        if (entry.totalTimeHost2 > 0) {
+            uint256 host2UptimePercent =
+                ((entry.totalTimeHost2 - entry.downtimeHost2) * 1e18) / entry.totalTimeHost2;
+            host2Reward = (credits * CREDIT_PRICE_WEI * host2UptimePercent) / (2 * 1e18);
+        }
+
+        uint256 totalAmount = host1Reward + host2Reward;
+        require(address(this).balance >= totalAmount, "Insufficient contract balance");
+
+        // Pay hosts
+        if (host1Reward > 0) {
+            (bool s1, ) = payable(entry.host1).call{value: host1Reward}("");
+            require(s1, "Transfer to host1 failed");
+        }
+
+        if (host2Reward > 0) {
+            (bool s2, ) = payable(entry.host2).call{value: host2Reward}("");
+            require(s2, "Transfer to host2 failed");
+        }
     }
 
     // function editRegistedLLM(
