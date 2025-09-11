@@ -13,7 +13,6 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 // Define custom chains with proper typing
 const galileo = {
-
   id: 16601,
   name: '0G-Galileo-Testnet',
   iconUrl: '/0g.webp',
@@ -32,7 +31,7 @@ const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? 'YOUR_PROJ
 const config = getDefaultConfig({
   appName: 'My RainbowKit App',
   projectId,
-  chains: [ galileo],
+  chains: [galileo],
   ssr: true, // If your dApp uses server side rendering (SSR)
 });
 
