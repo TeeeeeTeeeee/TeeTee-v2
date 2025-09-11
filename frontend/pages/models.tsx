@@ -131,7 +131,7 @@ const ModelsPage = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8 mt-20">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-15">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">My Models</h1>
@@ -348,62 +348,82 @@ const ModelsPage = () => {
               </div>
             </div>
           ) : (
-            // Models Grid
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            // Models Grid - Folder Design
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {models.map((model) => (
                 <motion.div
                   key={model.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-6"
+                  className="relative group cursor-pointer"
                 >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-1">{model.name}</h3>
-                      <div className="space-y-1">
-                        <p className="text-sm text-gray-600">
-                          <span className="font-medium">Shard:</span> {model.shard}
-                        </p>
-                        <p className="text-sm text-gray-600 break-all">
-                          <span className="font-medium">Wallet:</span> {model.walletAddress}
-                        </p>
+                  {/* Folder Container */}
+                  <div className="relative bg-white hover:bg-gray-50 transition-colors duration-200">
+                    {/* Folder Tab */}
+                    <div className="absolute -top-6 bg-white w-30 h-8 rounded-t-lg border-l-2 border-t-2 border-r-2 border-black"></div>
+                    
+                    {/* Folder Body */}
+                    <div className="bg-white border-2 border-black rounded-lg pt-6 pb-4 px-6 min-h-[180px] flex flex-col">
+                      {/* Header with Model Name and Status */}
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-lg text-black truncate pr-2">
+                          {model.name}
+                        </h3>
+                        {/* Status Indicator */}
+                        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${
+                          model.status === 'hosting' ? 'bg-green-500' : 'bg-gray-500'
+                        }`}></div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        model.status === 'hosting' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {model.status === 'hosting' ? 'Hosting' : 'Inactive'}
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-gray-500">
-                      Added {model.dateAdded.toLocaleDateString()}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleToggleModel(model.id)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                          model.status === 'hosting'
-                            ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                            : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
-                        }`}
-                      >
-                        {model.status === 'hosting' ? 'Stop' : 'Host'}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteModel(model.id)}
-                        className="p-2 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Delete model"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {/* Model Details */}
+                      <div className="space-y-1 text-xs font-mono text-gray-700 flex-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Shard:</span>
+                          <span className="truncate">{model.shard}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Wallet:</span>
+                          <span className="truncate">{model.walletAddress.slice(0, 10)}...</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-gray-500">Added:</span>
+                          <span>{model.dateAdded.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric' 
+                          })}</span>
+                        </div>
+                      </div>
+
+                      {/* Horizontal Line Separator */}
+                      <div className="border-t-2 border-black my-4"></div>
+
+                      {/* Action Buttons - Left and Right Aligned */}
+                      <div className="flex justify-between items-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteModel(model.id);
+                          }}
+                          className="px-3 py-2 text-xs font-mono font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors rounded"
+                          title="Delete model"
+                        >
+                          DELETE
+                        </button>
+                        
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleModel(model.id);
+                          }}
+                          className={`px-4 py-2 text-xs font-mono font-medium transition-colors rounded ${
+                            model.status === 'hosting'
+                              ? 'bg-red-500 text-white hover:bg-red-600'
+                              : 'bg-gradient-to-r from-violet-400 to-purple-400 text-white hover:from-violet-500 hover:to-purple-500'
+                          }`}
+                        >
+                          {model.status === 'hosting' ? 'STOP' : 'HOST'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
