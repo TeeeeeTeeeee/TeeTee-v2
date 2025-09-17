@@ -8,7 +8,7 @@ export const Navbar = () => {
   const navItems: PillNavItem[] = [
     { label: "Home", href: "/" },
     { label: "Chat", href: "/chat" },
-    { label: "Models", href: "#" },
+    { label: "Models", href: "/models" },
   ];
 
   // Render the RainbowKit ConnectButton
@@ -35,7 +35,7 @@ export const Navbar = () => {
         hoveredPillTextColor="#ddd6fe" // Light violet color for text on hover
         pillTextColor="#ffffff"
         className="bg-transparent"
-        initialLoadAnimation={true}
+        initialLoadAnimation={false}
         renderWalletButton={renderWalletButton}
       />
     </div>

@@ -219,17 +219,6 @@ const ChatPage = () => {
               {isOpen && <span>Models</span>}
             </Link>
 
-            <Link 
-              href="/storage"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
-              title={!isOpen ? "Storage" : ""}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 0h10M5 4h14l-1 13a2 2 0 01-2 2H8a2 2 0 01-2-2L5 4z" />
-              </svg>
-              {isOpen && <span>Storage</span>}
-            </Link>
-
           </nav>
         </div>
 
