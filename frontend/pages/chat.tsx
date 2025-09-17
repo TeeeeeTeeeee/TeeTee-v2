@@ -35,6 +35,12 @@ const ChatPage = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeConversation, setActiveConversation] = useState<number | null>(null);
 
+  // 0G storage: auto-save transcript using /api/chat-session (stream-based)
+  const [chatFilename, setChatFilename] = useState<string>('tee_chat.txt');
+  const [chatSaving, setChatSaving] = useState<boolean>(false);
+  const [chatSaveError, setChatSaveError] = useState<string>('');
+  const [chatSaveResult, setChatSaveResult] = useState<{ filename: string; rootHash?: string; txHash: string } | null>(null);
+
   const { address, isConnected } = useAccount();
 
   // Contract: credits and buy
@@ -143,6 +149,33 @@ const ChatPage = () => {
       setMessages(prev => prev.concat({ id: Date.now() + 1, text: `Error from model: ${err?.message || 'Unknown error'}`, isUser: false, timestamp: new Date() }));
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Save transcript to 0G using /api/chat-session
+  const handleSaveTranscript = async () => {
+    if (!messages.length) return;
+    setChatSaving(true);
+    setChatSaveError('');
+    setChatSaveResult(null);
+    try {
+      const payloadMessages = messages.map((m) => ({
+        role: m.isUser ? 'user' : 'assistant',
+        content: m.text,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : new Date(m.timestamp).getTime(),
+      }));
+      const res = await fetch('/api/chat-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: payloadMessages, filename: chatFilename }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
+      setChatSaveResult({ filename: data.filename, rootHash: data.rootHash, txHash: data.txHash });
+    } catch (err: any) {
+      setChatSaveError(err?.message || String(err));
+    } finally {
+      setChatSaving(false);
     }
   };
 
@@ -458,12 +491,38 @@ const ChatPage = () => {
                   </button>
                 </div>
 
-                {/* Footer Text */}
-                <div className="text-center mt-3">
-                  <p className="text-xs text-gray-500">
-                    All responses are verified through decentralized TEE computation.
-                  </p>
+                {/* Save Transcript Controls */}
+                <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex-1 flex items-center gap-2">
+                    <label className="text-xs text-gray-600 whitespace-nowrap">Save as</label>
+                    <input
+                      type="text"
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm"
+                      value={chatFilename}
+                      onChange={(e) => setChatFilename(e.target.value)}
+                      placeholder="tee_chat.txt"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSaveTranscript}
+                    disabled={chatSaving || messages.length === 0}
+                    className="px-4 py-2 rounded-md bg-black text-white disabled:opacity-60 text-sm"
+                    title={messages.length === 0 ? 'No messages to save' : 'Save chat transcript to 0G storage'}
+                  >
+                    {chatSaving ? 'Saving…' : 'Save Transcript'}
+                  </button>
                 </div>
+
+                {chatSaveError && (
+                  <div className="mt-2 text-xs text-red-600">Error: {chatSaveError}</div>
+                )}
+                {chatSaveResult && (
+                  <div className="mt-2 text-xs text-gray-700 break-all">
+                    <div><span className="font-medium">Saved Filename:</span> {chatSaveResult.filename}</div>
+                    <div><span className="font-medium">Root Hash:</span> {String(chatSaveResult.rootHash ?? '')}</div>
+                    <div><span className="font-medium">Tx Hash:</span> {chatSaveResult.txHash}</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
