@@ -8,13 +8,10 @@ app = Flask(__name__)
 
 # --- simple protection & "run-once" for splitting ---
 RUN_TOKEN = os.environ.get("RUN_TOKEN", "")
-FLAG_PATH = Path("split_once.flag")
 
 def already_split() -> bool:
-    return FLAG_PATH.exists()
-
-def mark_split_done():
-    FLAG_PATH.write_text("done")
+    manifest_path = Path("./enhanced_shards/pipeline_manifest.json")
+    return manifest_path.exists()
 
 # Lazy-initialized pipeline (load after split exists)
 _pipeline = None
@@ -31,7 +28,6 @@ def split_endpoint():
         return jsonify({"status": "skipped", "message": "shards already exist"}), 200
     try:
         result = run_split()  # uses defaults (./model -> ./enhanced_shards)
-        mark_split_done()
         return jsonify({"status": "success", "result": result}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500

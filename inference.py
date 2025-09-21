@@ -45,10 +45,17 @@ class FirstStage(nn.Module):
         x = self.embed(input_ids)
         B, S = input_ids.shape
         pos_ids = torch.arange(S, device=input_ids.device).unsqueeze(0).expand(B, -1)
+        
+        # Create causal mask
+        causal_mask = torch.triu(torch.ones(S, S, device=input_ids.device), diagonal=1).bool()
+        causal_mask = causal_mask.unsqueeze(0).unsqueeze(0).expand(B, 1, -1, -1)
+        # Convert to additive mask (0 for allowed, -inf for masked)
+        causal_mask = torch.where(causal_mask, float('-inf'), 0.0)
+        
         for layer in self.layers:
             x = layer(
                 hidden_states=x,
-                attention_mask=None,
+                attention_mask=causal_mask,
                 position_ids=pos_ids,
                 past_key_value=None,
                 use_cache=False,
@@ -62,14 +69,13 @@ class SecondStage(nn.Module):
         self.layers = nn.ModuleList([make_decoder_layer(cfg, i) for i in range(split_index, cfg.num_hidden_layers)])
         self.norm = LlamaRMSNorm(cfg.hidden_size, eps=cfg.rms_norm_eps)
         self.lm_head = nn.Linear(cfg.hidden_size, cfg.vocab_size, bias=False)
-    def forward(self, hidden):
-        S = hidden.size(1)
-        pos_ids = torch.arange(S, device=hidden.device).unsqueeze(0)
+        self.split_index = split_index
+    def forward(self, hidden, position_ids, attention_mask):
         for layer in self.layers:
             hidden = layer(
                 hidden_states=hidden,
-                attention_mask=None,
-                position_ids=pos_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
                 past_key_value=None,
                 use_cache=False,
                 output_attentions=False
@@ -141,8 +147,25 @@ class TwoStagePipeline:
         prompt_len = input_ids.size(1)
 
         for _ in range(max_new):
+            # Pass through first stage
             hidden = self.first(input_ids, attn_mask)
-            logits = self.second(hidden.to(next(self.second.parameters()).device))
+            
+            # Create position IDs and attention mask for second stage
+            B, S = input_ids.shape
+            pos_ids = torch.arange(S, device=input_ids.device).unsqueeze(0).expand(B, -1)
+            
+            # Create causal mask for current sequence length
+            causal_mask = torch.triu(torch.ones(S, S, device=input_ids.device), diagonal=1).bool()
+            causal_mask = causal_mask.unsqueeze(0).unsqueeze(0).expand(B, 1, -1, -1)
+            causal_mask = torch.where(causal_mask, float('-inf'), 0.0)
+            
+            # Pass through second stage
+            logits = self.second(
+                hidden.to(next(self.second.parameters()).device),
+                pos_ids.to(next(self.second.parameters()).device),
+                causal_mask.to(next(self.second.parameters()).device)
+            )
+            
             last = logits[:, -1, :]
             last = last / temperature if temperature and temperature > 0 else last
             probs = torch.softmax(last, dim=-1)
