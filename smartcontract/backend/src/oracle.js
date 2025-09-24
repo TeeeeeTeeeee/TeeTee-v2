@@ -10,7 +10,6 @@ dotenv.config({ path: '../.env' });
  * - RPC_URL: JSON-RPC endpoint for target chain
  * - PRIVATE_KEY: Private key of the CreditUse contract owner (required because reportDowntime is onlyOwner)
  * - CONTRACT_ADDRESS: Deployed CreditUse contract address
- * - CHECK_INTERVAL_MS: Optional. Interval for checks in milliseconds. Default 60000 (1 minute)
  */
 
 class DowntimeOracle {
@@ -27,7 +26,6 @@ class DowntimeOracle {
     this.wallet = new ethers.Wallet(privateKey, this.provider);
     this.contractAddress = contractAddress;
 
-    // Load ABI from Hardhat artifacts to avoid ABI drift
     const require = createRequire(import.meta.url);
       const creditArtifact = require('../../artifacts/contracts/creditUse.sol/CreditUse.json');
       const abi = creditArtifact.abi;
@@ -58,7 +56,6 @@ class DowntimeOracle {
       this.downtimeAccumulator.set(config.id, { host1: 0, host2: 0 });
     }
     if (!this.lastCheckTime.has(config.id)) {
-      // initialize as if one interval elapsed already, so first run counts as 1 minute if down
       const now = Math.floor(Date.now() / 1000);
       const approxLast = now - Math.max(60, Math.floor(this.intervalMs / 1000));
       this.lastCheckTime.set(config.id, approxLast);
@@ -170,7 +167,6 @@ class DowntimeOracle {
   }
 
   async preflight() {
-    // Optional preflight: verify contract bytecode exists and (if available) owner matches
     try {
       const code = await this.provider.getCode(this.contractAddress);
       if (!code || code === '0x') {
