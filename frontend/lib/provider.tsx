@@ -13,7 +13,7 @@ import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 
 // Define custom chains with proper typing
 const galileo = {
-  id: 16601,
+  id: 16602,
   name: '0G-Galileo-Testnet',
   iconUrl: '/0g.webp',
   iconBackground: '#fff',
