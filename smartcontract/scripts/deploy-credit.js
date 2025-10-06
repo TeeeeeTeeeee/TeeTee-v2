@@ -30,20 +30,39 @@ async function main() {
   // const deployerCredits = await creditUse.checkUserCredits(deployer.address);
   // console.log("   - Deployer credits:", deployerCredits.toString());
 
-  // //  Register a hosted LLM
-  // console.log("📝 Registering a Hosted LLM...");
+  // //  Create new LLM with first host (pass array length as llmId to create new)
+  // console.log("📝 Creating new LLM with first host...");
+  // const totalLLMs = await creditUse.getTotalLLMs();
   // const registerTx = await creditUse.registerLLM(
-  //   deployer.address,       // host1
-  //   deployer.address,       // host2
-  //   "https://shard1.com",  // shardUrl1
-  //   "https://shard2.com",  // shardUrl2
-  //   "TestModel",            // modelName
-  //   100,                    // totalTimeHost1 in minutes
-  //   50                      // totalTimeHost2 in minutes
+  //   totalLLMs,                               // llmId - array length for new entry
+  //   deployer.address,                        // host1
+  //   "0x0000000000000000000000000000000000000000", // host2 - empty (address zero)
+  //   "https://shard1.com",                   // shardUrl1
+  //   "",                                      // shardUrl2 - empty
+  //   "TestModel",                             // modelName
+  //   100,                                     // totalTimeHost1 in minutes
+  //   0                                        // totalTimeHost2 - 0 (empty)
   // );
   // await registerTx.wait();
-  // const llmId = 0;
-  // console.log("   - Registered LLM ID:", llmId);
+  // const llmId = Number(totalLLMs);
+  // console.log("   - Created LLM ID:", llmId);
+  // console.log("   - Status: Waiting for second host");
+  
+  // // Join as second host (update existing entry, leave host1 fields as 0/empty)
+  // console.log("🤝 Joining as second host...");
+  // const joinTx = await creditUse.registerLLM(
+  //   llmId,                                   // llmId - existing entry
+  //   "0x0000000000000000000000000000000000000000", // host1 - empty (keep existing)
+  //   deployer.address,                        // host2
+  //   "",                                      // shardUrl1 - empty (keep existing)
+  //   "https://shard2.com",                   // shardUrl2
+  //   "",                                      // modelName - empty (keep existing)
+  //   0,                                       // totalTimeHost1 - 0 (keep existing)
+  //   50                                       // totalTimeHost2 in minutes
+  // );
+  // await joinTx.wait();
+  // console.log("   - Second host joined successfully");
+  // console.log("   - Status: Complete");
 
   // // Use credits on the LLM
   // const tokensUsed = 20;
