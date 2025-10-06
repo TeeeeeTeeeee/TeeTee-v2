@@ -8,7 +8,10 @@ import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useCheckHostedLLM } from '../lib/contracts/creditUse/reads/useCheckHostedLLM';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract, useConfig } from 'wagmi';
+import { readContract } from '@wagmi/core';
+import ABI from '../utils/abi.json';
+import { CONTRACT_ADDRESS } from '../utils/address';
 
 interface Model {
   id: number;
@@ -29,6 +32,15 @@ interface JoinHostForm {
   llmId: number;
   shard: string;
   walletAddress: string;
+}
+
+interface IncompleteLLM {
+  id: number;
+  modelName: string;
+  host1: string;
+  shardUrl1: string;
+  poolBalance: bigint;
+  totalTimeHost1: bigint;
 }
 
 const AVAILABLE_MODELS = [
@@ -69,12 +81,67 @@ const ModelsPage = () => {
   });
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
+  const [incompleteLLMDetails, setIncompleteLLMDetails] = useState<IncompleteLLM[]>([]);
+  const [isLoadingIncomplete, setIsLoadingIncomplete] = useState(false);
 
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
+  const config = useConfig();
+
+  // Fetch incomplete LLM details
+  useEffect(() => {
+    const fetchIncompleteLLMDetails = async () => {
+      if (!incompleteLLMs || incompleteLLMs.length === 0) {
+        setIncompleteLLMDetails([]);
+        return;
+      }
+
+      setIsLoadingIncomplete(true);
+      
+      try {
+        const details: IncompleteLLM[] = [];
+        
+        // Fetch details for each incomplete LLM using the contract
+        for (const llmId of incompleteLLMs) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [llmId]
+            }) as any;
+            
+            console.log('LLM Data for ID', llmId, ':', data);
+            
+            if (data) {
+              // Access struct fields by name (wagmi returns structs as objects)
+              details.push({
+                id: Number(llmId),
+                modelName: data.modelName || data[4] || 'Unknown Model',
+                host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                shardUrl1: data.shardUrl1 || data[2] || '',
+                poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
+                totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n)
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${llmId}:`, error);
+          }
+        }
+        
+        setIncompleteLLMDetails(details);
+      } catch (error) {
+        console.error('Error fetching incomplete LLM details:', error);
+      } finally {
+        setIsLoadingIncomplete(false);
+      }
+    };
+
+    fetchIncompleteLLMDetails();
+  }, [incompleteLLMs, config]);
 
   // Simulate loading models from storage/API
   useEffect(() => {
@@ -164,6 +231,11 @@ const ModelsPage = () => {
   // Handle joining as second host
   const handleJoinAsSecondHost = async () => {
     if (selectedLLMId === null || !joinFormData.shard || !joinFormData.walletAddress) return;
+
+    if (!connectedAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
 
     try {
       resetWrite();
@@ -511,6 +583,253 @@ const ModelsPage = () => {
                 )}
               </button>
             </div>
+          </motion.div>
+        )}
+
+        {/* Available Slots Section - Show incomplete LLMs waiting for second host */}
+        {!showAddForm && incompleteLLMDetails.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Available Hosting Slots</h2>
+              <p className="text-gray-600">Join as the second host for these models</p>
+            </div>
+
+            {isLoadingIncomplete ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {incompleteLLMDetails.map((llm) => (
+                  <motion.div
+                    key={llm.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-200 p-6 hover:border-violet-400 transition-all"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-gray-900 mb-1">{llm.modelName}</h3>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                          </svg>
+                          Waiting for 2nd host
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-sm mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">Host 1:</span>
+                        <span className="font-mono text-xs text-gray-700">{llm.host1.slice(0, 10)}...</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">Shard 1:</span>
+                        <span className="text-gray-700">{AVAILABLE_SHARDS.find(s => s.id === llm.shardUrl1)?.name || llm.shardUrl1}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500">Pool Balance:</span>
+                        <span className="text-violet-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedLLMId(llm.id);
+                        setJoinFormData({
+                          llmId: llm.id,
+                          shard: '',
+                          walletAddress: connectedAddress || ''
+                        });
+                        setShowJoinForm(true);
+                      }}
+                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm"
+                    >
+                      Join as Host 2
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Join Form Modal */}
+        {showJoinForm && selectedLLMId !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowJoinForm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Form Header */}
+              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-violet-50 to-purple-50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Join as Second Host</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Model: {incompleteLLMDetails.find(llm => llm.id === selectedLLMId)?.modelName}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowJoinForm(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Form Content */}
+              <div className="p-6 space-y-6">
+                {/* Shard Selection */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">1</span>
+                    Select Your Shard
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">Choose where to host your part of the model</p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {AVAILABLE_SHARDS.map((shard) => (
+                      <button
+                        key={shard.id}
+                        onClick={() => setJoinFormData({ ...joinFormData, shard: shard.id })}
+                        className={`text-left p-4 rounded-lg border transition-colors ${
+                          joinFormData.shard === shard.id
+                            ? 'border-violet-400 bg-violet-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-medium text-gray-900">{shard.name}</div>
+                          <div className={`text-xs px-2 py-1 rounded-full ${
+                            parseInt(shard.capacity) > 80 
+                              ? 'bg-red-100 text-red-800'
+                              : parseInt(shard.capacity) > 60
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {shard.capacity}
+                          </div>
+                        </div>
+                        <div className="text-sm text-gray-500">{shard.region}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Wallet Address */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">2</span>
+                    Your Wallet Address
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">Enter your wallet address to receive hosting rewards</p>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={joinFormData.walletAddress}
+                      onChange={(e) => setJoinFormData({ ...joinFormData, walletAddress: e.target.value })}
+                      placeholder="0x1234567890abcdef..."
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => connectedAddress && setJoinFormData({ ...joinFormData, walletAddress: connectedAddress })}
+                      disabled={!connectedAddress}
+                      className="px-4 py-3 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm font-medium"
+                      title={connectedAddress ? 'Use connected wallet' : 'No wallet connected'}
+                    >
+                      Use Connected
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary */}
+                {joinFormData.shard && joinFormData.walletAddress && (
+                  <div className="p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-lg border border-violet-200">
+                    <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Summary
+                    </h4>
+                    <div className="space-y-2 text-sm text-gray-700">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Your Shard:</span> 
+                        <span className="text-violet-700">{AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard)?.name} ({AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard)?.region})</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Your Wallet:</span> 
+                        <span className="text-violet-700 font-mono text-xs">{joinFormData.walletAddress.slice(0, 10)}...</span>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-violet-200">
+                        <p className="text-xs text-gray-600">ℹ️ Hosting duration will be set by the oracle</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Form Footer */}
+              <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={resetJoinForm}
+                    disabled={isWriting || isConfirming}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  
+                  {/* Transaction Status */}
+                  {(isWriting || isConfirming) && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-400"></div>
+                      <span>{isWriting ? 'Submitting transaction...' : 'Confirming...'}</span>
+                    </div>
+                  )}
+                  
+                  {writeError && (
+                    <div className="text-sm text-red-600">
+                      Error: {writeError.message.slice(0, 50)}...
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleJoinAsSecondHost}
+                  disabled={!joinFormData.shard || !joinFormData.walletAddress || isWriting || isConfirming}
+                  className="px-6 py-2 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {(isWriting || isConfirming) ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      {isWriting ? 'Submitting...' : 'Confirming...'}
+                    </>
+                  ) : (
+                    <>
+                      Join as Host 2
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
 
