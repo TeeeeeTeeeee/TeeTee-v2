@@ -15,8 +15,14 @@ import {
 } from '@/lib/contracts/creditUse';
 
 interface Conversation {
-  id: number;
-  title: string;
+  _id: string;
+  walletAddress: string;
+  filename: string;
+  rootHash: string | null;
+  txHash: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Message {
@@ -33,7 +39,10 @@ const ChatPage = () => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeConversation, setActiveConversation] = useState<number | null>(null);
+  const [activeConversation, setActiveConversation] = useState<string | null>(null);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 0G storage: auto-save transcript using /api/chat-session (stream-based)
   const [chatFilename, setChatFilename] = useState<string>('tee_chat.txt');
@@ -61,14 +70,95 @@ const ChatPage = () => {
     }
   }, [isBuyConfirmed, refetchMyCredits]);
 
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const models = [
     'gpt-4o-mini',
     'gpt-4o',
     'gpt-4.1-mini',
   ];
 
-  // Sample conversations data (empty for now)
-  const conversations: Conversation[] = [];
+  // Chat sessions from database
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // Fetch chat sessions for the connected wallet
+  const fetchChatSessions = async () => {
+    if (!address) return;
+    
+    setIsLoadingSessions(true);
+    try {
+      const res = await fetch(`/api/get-chat-sessions?walletAddress=${address}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch chat sessions');
+      }
+      const data = await res.json();
+      setConversations(data.sessions || []);
+    } catch (err) {
+      console.error('Error fetching chat sessions:', err);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
+  // Fetch sessions when wallet connects
+  useEffect(() => {
+    if (isConnected && address) {
+      fetchChatSessions();
+    } else {
+      setConversations([]);
+    }
+  }, [isConnected, address]);
+
+  // Load messages from a saved chat session
+  const loadChatSession = async (session: Conversation) => {
+    if (!session.rootHash) {
+      console.error('No root hash available for this session');
+      return;
+    }
+
+    setIsLoadingMessages(true);
+    try {
+      const res = await fetch(`/api/get-chat-messages?rootHash=${session.rootHash}`);
+      if (!res.ok) {
+        throw new Error('Failed to load chat messages');
+      }
+      const data = await res.json();
+      
+      // Convert the API response to Message format
+      const loadedMessages: Message[] = data.messages.map((msg: any, index: number) => ({
+        id: Date.now() + index,
+        text: msg.content,
+        isUser: msg.role === 'user',
+        timestamp: new Date(msg.timestamp),
+      }));
+
+      setMessages(loadedMessages);
+      setActiveConversation(session._id);
+      setChatFilename(session.filename);
+      
+      // Clear any previous save results
+      setChatSaveError('');
+      setChatSaveResult(null);
+    } catch (err: any) {
+      console.error('Error loading chat session:', err);
+      setMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
+  // Start a new chat
+  const startNewChat = () => {
+    setMessages([]);
+    setActiveConversation(null);
+    setChatFilename('tee_chat.txt');
+    setChatSaveError('');
+    setChatSaveResult(null);
+  };
 
   const handleBuyBundle = async () => {
     if (!isConnected || !bundlePrice) return;
@@ -183,6 +273,9 @@ const ChatPage = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
       setChatSaveResult({ filename: data.filename, rootHash: data.rootHash, txHash: data.txHash });
+      
+      // Refetch chat sessions to update the sidebar
+      await fetchChatSessions();
     } catch (err: any) {
       setChatSaveError(err?.message || String(err));
     } finally {
@@ -286,6 +379,7 @@ const ChatPage = () => {
         {/* New Chat Button */}
         <div className="p-2">
           <button 
+            onClick={startNewChat}
             className="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-3"
             title={!isOpen ? "New chat" : ""}
           >
@@ -299,23 +393,43 @@ const ChatPage = () => {
         {/* Chat History */}
         <div className="flex-1 overflow-y-auto px-2">
           <div className="flex flex-col gap-1 min-h-0">
-            {conversations.length > 0 ? (
+            {isLoadingSessions ? (
+              isOpen && (
+                <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+                  <p className="text-sm">Loading sessions...</p>
+                </div>
+              )
+            ) : conversations.length > 0 ? (
               conversations.map((chat) => (
                 <button
-                  key={chat.id}
-                  className="w-full text-left text-gray-700 hover:bg-gray-50 px-3 py-2.5 rounded-lg text-sm flex items-center gap-3"
-                  title={!isOpen ? chat.title : ""}
+                  key={chat._id}
+                  onClick={() => loadChatSession(chat)}
+                  disabled={isLoadingMessages}
+                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
+                    activeConversation === chat._id
+                      ? 'bg-violet-100 text-violet-900'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  } disabled:opacity-50`}
+                  title={!isOpen ? chat.filename : ""}
                 >
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
                   </svg>
-                  {isOpen && <span className="truncate">{chat.title}</span>}
+                  {isOpen && (
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate font-medium">{chat.filename}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                  )}
                 </button>
               ))
             ) : (
-              isOpen && (
+              isOpen && !isLoadingSessions && (
                 <div className="flex flex-col items-center justify-center py-8 text-gray-500">
                   <p className="text-sm">No conversations yet.</p>
+                  <p className="text-xs mt-1">Start chatting and save your transcript!</p>
                 </div>
               )
             )}
@@ -429,8 +543,12 @@ const ChatPage = () => {
 
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col w-full">
-            {/* Chat messages */}
-            {messages.length > 0 ? (
+            {/* Loading state */}
+            {isLoadingMessages ? (
+              <div className="flex-1 flex flex-col items-center justify-center">
+                <div className="animate-pulse text-gray-600">Loading messages...</div>
+              </div>
+            ) : messages.length > 0 ? (
               <div className="flex-1 flex flex-col space-y-4 overflow-y-auto pb-4">
                 {messages.map((msg) => (
                   <div 
@@ -451,6 +569,7 @@ const ChatPage = () => {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center">
