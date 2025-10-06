@@ -155,6 +155,13 @@ const ChatPage = () => {
   // Save transcript to 0G using /api/chat-session
   const handleSaveTranscript = async () => {
     if (!messages.length) return;
+    
+    // Check if wallet is connected
+    if (!isConnected || !address) {
+      setChatSaveError('Please connect your wallet to save transcripts');
+      return;
+    }
+    
     setChatSaving(true);
     setChatSaveError('');
     setChatSaveResult(null);
@@ -167,7 +174,11 @@ const ChatPage = () => {
       const res = await fetch('/api/chat-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payloadMessages, filename: chatFilename }),
+        body: JSON.stringify({ 
+          messages: payloadMessages, 
+          filename: chatFilename,
+          walletAddress: address 
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
@@ -505,9 +516,13 @@ const ChatPage = () => {
                   </div>
                   <button
                     onClick={handleSaveTranscript}
-                    disabled={chatSaving || messages.length === 0}
+                    disabled={chatSaving || messages.length === 0 || !isConnected}
                     className="px-4 py-2 rounded-md bg-black text-white disabled:opacity-60 text-sm"
-                    title={messages.length === 0 ? 'No messages to save' : 'Save chat transcript to 0G storage'}
+                    title={
+                      !isConnected ? 'Connect wallet to save' :
+                      messages.length === 0 ? 'No messages to save' : 
+                      'Save chat transcript to 0G storage and MongoDB'
+                    }
                   >
                     {chatSaving ? 'Saving…' : 'Save Transcript'}
                   </button>
