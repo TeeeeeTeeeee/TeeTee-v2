@@ -4,6 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
+import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
+import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
+import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
+import { useCheckHostedLLM } from '../lib/contracts/creditUse/reads/useCheckHostedLLM';
 
 interface Model {
   id: number;
@@ -18,6 +22,14 @@ interface AddModelForm {
   modelName: string;
   shard: string;
   walletAddress: string;
+  totalTime: string;
+}
+
+interface JoinHostForm {
+  llmId: number;
+  shard: string;
+  walletAddress: string;
+  totalTime: string;
 }
 
 const AVAILABLE_MODELS = [
@@ -49,8 +61,22 @@ const ModelsPage = () => {
   const [formData, setFormData] = useState<AddModelForm>({
     modelName: '',
     shard: '',
-    walletAddress: ''
+    walletAddress: '',
+    totalTime: '100'
   });
+  const [joinFormData, setJoinFormData] = useState<JoinHostForm>({
+    llmId: 0,
+    shard: '',
+    walletAddress: '',
+    totalTime: '100'
+  });
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
+
+  // Smart contract hooks
+  const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
+  const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
+  const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
 
   // Simulate loading models from storage/API
   useEffect(() => {
@@ -86,29 +112,103 @@ const ModelsPage = () => {
     setFormData({
       modelName: '',
       shard: '',
-      walletAddress: ''
+      walletAddress: '',
+      totalTime: '100'
+    });
+    resetWrite();
+  };
+
+  // Reset join form
+  const resetJoinForm = () => {
+    setShowJoinForm(false);
+    setSelectedLLMId(null);
+    setJoinFormData({
+      llmId: 0,
+      shard: '',
+      walletAddress: '',
+      totalTime: '100'
     });
   };
 
-  // Handle form submission
-  const handleAddModel = () => {
-    if (!formData.modelName || !formData.shard || !formData.walletAddress) return;
+  // Handle form submission for registering first host
+  const handleAddModel = async () => {
+    if (!formData.modelName || !formData.shard || !formData.walletAddress || !formData.totalTime || totalLLMs === undefined) return;
 
-    const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
-    
-    const newModel: Model = {
-      id: Date.now(),
-      name: formData.modelName,
-      shard: selectedShard?.name || formData.shard,
-      walletAddress: formData.walletAddress,
-      status: 'hosting',
-      dateAdded: new Date()
-    };
-
-    const updatedModels = [newModel, ...models];
-    saveModels(updatedModels);
-    resetForm();
+    try {
+      const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
+      
+      // Register first host on blockchain (creates slot)
+      // Pass totalLLMs as llmId to create new entry
+      // Use address(0) for host2 and empty string for shardUrl2 to leave them empty
+      await registerLLM(
+        Number(totalLLMs),                              // llmId - array length for new entry
+        formData.walletAddress,                         // host1
+        '0x0000000000000000000000000000000000000000',  // host2 - empty (address zero)
+        selectedShard?.id || formData.shard,           // shardUrl1
+        '',                                             // shardUrl2 - empty
+        formData.modelName,                            // modelName
+        parseInt(formData.totalTime),                  // totalTimeHost1
+        0                                               // totalTimeHost2 - empty
+      );
+    } catch (error) {
+      console.error('Failed to register LLM:', error);
+    }
   };
+
+  // Handle joining as second host
+  const handleJoinAsSecondHost = async () => {
+    if (selectedLLMId === null || !joinFormData.shard || !joinFormData.walletAddress || !joinFormData.totalTime) return;
+
+    try {
+      const selectedShard = AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard);
+      
+      // Join as second host on blockchain
+      // Pass existing llmId, leave host1 fields as 0/empty to keep them, fill in host2 fields
+      await registerLLM(
+        selectedLLMId,                                  // llmId - existing entry
+        '0x0000000000000000000000000000000000000000',  // host1 - empty (keep existing)
+        joinFormData.walletAddress,                     // host2 - new host
+        '',                                             // shardUrl1 - empty (keep existing)
+        selectedShard?.id || joinFormData.shard,       // shardUrl2
+        '',                                             // modelName - empty (keep existing)
+        0,                                              // totalTimeHost1 - 0 (keep existing)
+        parseInt(joinFormData.totalTime)               // totalTimeHost2
+      );
+    } catch (error) {
+      console.error('Failed to join as second host:', error);
+    }
+  };
+
+  // Effect to handle successful transaction confirmation
+  useEffect(() => {
+    if (isConfirmed) {
+      refetchIncomplete();
+      refetchTotal();
+      
+      // If it was creating a new model (not joining)
+      if (formData.modelName && !showJoinForm) {
+        const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
+        
+        const newModel: Model = {
+          id: Date.now(),
+          name: formData.modelName,
+          shard: `${selectedShard?.name || formData.shard} (Waiting for 2nd host)`,
+          walletAddress: formData.walletAddress,
+          status: 'inactive',
+          dateAdded: new Date()
+        };
+
+        const updatedModels = [newModel, ...models];
+        saveModels(updatedModels);
+        resetForm();
+      } 
+      // If it was joining as second host
+      else if (showJoinForm) {
+        resetJoinForm();
+        // Optionally reload models or update the specific model status
+      }
+    }
+  }, [isConfirmed]);
 
   // Handle model status toggle
   const handleToggleModel = (modelId: number) => {
@@ -251,9 +351,9 @@ const ModelsPage = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">2</span>
-                    Select Shard
+                    Select Your Shard
                   </h3>
-                  <p className="text-sm text-gray-600 mb-4">Choose where to host your model</p>
+                  <p className="text-sm text-gray-600 mb-4">Choose where to host your part of the model</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -293,9 +393,9 @@ const ModelsPage = () => {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
                     <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">3</span>
-                    Wallet Address
+                    Your Wallet Address
                   </h3>
-                  <p className="text-sm text-gray-600 mb-4">Enter the wallet address for hosting rewards</p>
+                  <p className="text-sm text-gray-600 mb-4">Enter your wallet address to receive hosting rewards</p>
                 </div>
                 
                 <div className="max-w-2xl">
@@ -313,8 +413,38 @@ const ModelsPage = () => {
                 </div>
               </div>
 
+              {/* Divider */}
+              <div className="border-t border-gray-200"></div>
+
+              {/* Step 4: Hosting Duration */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">4</span>
+                    Hosting Duration
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">Set your hosting time commitment in minutes</p>
+                </div>
+                
+                <div className="max-w-2xl">
+                  <label htmlFor="totalTime" className="block text-sm font-medium text-gray-700 mb-2">
+                    Hosting Time (minutes) *
+                  </label>
+                  <input
+                    id="totalTime"
+                    type="number"
+                    min="1"
+                    value={formData.totalTime}
+                    onChange={(e) => setFormData({ ...formData, totalTime: e.target.value })}
+                    placeholder="100"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                  />
+                  <p className="text-xs text-gray-500 mt-2">Note: Another host will need to join to complete the LLM registration</p>
+                </div>
+              </div>
+
               {/* Summary - Show when all fields are filled */}
-              {formData.modelName && formData.shard && formData.walletAddress && (
+              {formData.modelName && formData.shard && formData.walletAddress && formData.totalTime && (
                 <div className="mt-6 p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-lg border border-violet-200">
                   <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
                     <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -328,16 +458,19 @@ const ModelsPage = () => {
                       <span className="text-violet-700">{formData.modelName}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">Shard:</span> 
-                      <span className="text-violet-700">{AVAILABLE_SHARDS.find(s => s.id === formData.shard)?.name}</span>
+                      <span className="font-medium">Your Shard:</span> 
+                      <span className="text-violet-700">{AVAILABLE_SHARDS.find(s => s.id === formData.shard)?.name} ({AVAILABLE_SHARDS.find(s => s.id === formData.shard)?.region})</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">Region:</span> 
-                      <span className="text-violet-700">{AVAILABLE_SHARDS.find(s => s.id === formData.shard)?.region}</span>
+                      <span className="font-medium">Your Wallet:</span> 
+                      <span className="text-violet-700 font-mono text-xs">{formData.walletAddress.slice(0, 10)}...</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">Wallet:</span> 
-                      <span className="text-violet-700 font-mono text-xs">{formData.walletAddress}</span>
+                      <span className="font-medium">Hosting Time:</span> 
+                      <span className="text-violet-700">{formData.totalTime} minutes</span>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-violet-200">
+                      <p className="text-xs text-gray-600">⚠️ This will create a slot waiting for a second host to complete the registration</p>
                     </div>
                   </div>
                 </div>
@@ -346,22 +479,48 @@ const ModelsPage = () => {
 
             {/* Form Footer */}
             <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
-              <button
-                onClick={resetForm}
-                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={resetForm}
+                  disabled={isWriting || isConfirming}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                
+                {/* Transaction Status */}
+                {(isWriting || isConfirming) && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-400"></div>
+                    <span>{isWriting ? 'Submitting transaction...' : 'Confirming...'}</span>
+                  </div>
+                )}
+                
+                {writeError && (
+                  <div className="text-sm text-red-600">
+                    Error: {writeError.message.slice(0, 50)}...
+                  </div>
+                )}
+              </div>
 
               <button
                 onClick={handleAddModel}
-                disabled={!formData.modelName || !formData.shard || !formData.walletAddress}
+                disabled={!formData.modelName || !formData.shard || !formData.walletAddress || !formData.totalTime || isWriting || isConfirming}
                 className="px-6 py-2 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Model
+                {(isWriting || isConfirming) ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    {isWriting ? 'Submitting...' : 'Confirming...'}
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create Hosting Slot
+                  </>
+                )}
               </button>
             </div>
           </motion.div>
