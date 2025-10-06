@@ -23,48 +23,48 @@ async function main() {
   console.log("   - Bundle price:", ethers.formatEther(price), "0G");
   console.log("   - Contract owner:", owner);
 
-  // Buy credits
-  console.log("💳 Buying 1 bundle of credits...");
-  const buyTx = await creditUse.buyCredits({ value: price });
-  await buyTx.wait();
-  const deployerCredits = await creditUse.checkUserCredits(deployer.address);
-  console.log("   - Deployer credits:", deployerCredits.toString());
+  // // Buy credits
+  // console.log("💳 Buying 1 bundle of credits...");
+  // const buyTx = await creditUse.buyCredits({ value: price });
+  // await buyTx.wait();
+  // const deployerCredits = await creditUse.checkUserCredits(deployer.address);
+  // console.log("   - Deployer credits:", deployerCredits.toString());
 
-  //  Register a hosted LLM
-  console.log("📝 Registering a Hosted LLM...");
-  const registerTx = await creditUse.registerLLM(
-    deployer.address,       // host1
-    deployer.address,       // host2
-    "https://shard1.com",  // shardUrl1
-    "https://shard2.com",  // shardUrl2
-    "TestModel",            // modelName
-    100,                    // totalTimeHost1 in minutes
-    50                      // totalTimeHost2 in minutes
-  );
-  await registerTx.wait();
-  const llmId = 0;
-  console.log("   - Registered LLM ID:", llmId);
+  // //  Register a hosted LLM
+  // console.log("📝 Registering a Hosted LLM...");
+  // const registerTx = await creditUse.registerLLM(
+  //   deployer.address,       // host1
+  //   deployer.address,       // host2
+  //   "https://shard1.com",  // shardUrl1
+  //   "https://shard2.com",  // shardUrl2
+  //   "TestModel",            // modelName
+  //   100,                    // totalTimeHost1 in minutes
+  //   50                      // totalTimeHost2 in minutes
+  // );
+  // await registerTx.wait();
+  // const llmId = 0;
+  // console.log("   - Registered LLM ID:", llmId);
 
-  // Use credits on the LLM
-  const tokensUsed = 20;
-  console.log(`💻 Using ${tokensUsed} credits on LLM ID ${llmId}...`);
-  const useTx = await creditUse.usePrompt(llmId, tokensUsed);
-  await useTx.wait();
-  const poolBalance = (await creditUse.getHostedLLM(llmId)).poolBalance;
-  console.log("   - Pool balance after usePrompt:", poolBalance.toString());
+  // // Use credits on the LLM
+  // const tokensUsed = 20;
+  // console.log(`💻 Using ${tokensUsed} credits on LLM ID ${llmId}...`);
+  // const useTx = await creditUse.usePrompt(llmId, tokensUsed);
+  // await useTx.wait();
+  // const poolBalance = (await creditUse.getHostedLLM(llmId)).poolBalance;
+  // console.log("   - Pool balance after usePrompt:", poolBalance.toString());
 
-  console.log("⏱️ Reporting downtime for hosts...");
-  const downtimeTx = await creditUse.reportDowntime(llmId, 10, 5); // host1 10min, host2 5min
-  await downtimeTx.wait();
-  const llmData = await creditUse.getHostedLLM(llmId);
-  console.log("   - Downtime host1:", llmData.downtimeHost1.toString());
-  console.log("   - Downtime host2:", llmData.downtimeHost2.toString());
+  // console.log("⏱️ Reporting downtime for hosts...");
+  // const downtimeTx = await creditUse.reportDowntime(llmId, 10, 5); // host1 10min, host2 5min
+  // await downtimeTx.wait();
+  // const llmData = await creditUse.getHostedLLM(llmId);
+  // console.log("   - Downtime host1:", llmData.downtimeHost1.toString());
+  // console.log("   - Downtime host2:", llmData.downtimeHost2.toString());
 
-  // Withdraw rewards to hosts
-  console.log("💸 Withdrawing rewards to hosts...");
-  const withdrawTx = await creditUse.withdrawToHosts(llmId);
-  await withdrawTx.wait();
-  console.log("✅ Withdraw executed. Check host wallets for received funds.");
+  // // Withdraw rewards to hosts
+  // console.log("💸 Withdrawing rewards to hosts...");
+  // const withdrawTx = await creditUse.withdrawToHosts(llmId);
+  // await withdrawTx.wait();
+  // console.log("✅ Withdraw executed. Check host wallets for received funds.");
 }
 
 main().catch((e) => {
