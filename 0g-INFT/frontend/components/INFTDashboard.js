@@ -466,7 +466,7 @@ export default function INFTDashboard() {
       )
 
       console.log('🎉 Transfer completed successfully!')
-      alert(`✅ INFT Token ${transferData.tokenId} transferred successfully from ${transferData.from} to ${transferData.to}!`)
+      alert(`✅ INFT Token ${transferData.tokenId} transferred successfully!\n\nFrom: ${transferData.from}\nTo: ${transferData.to}\n\nCheck the console for transaction details.`)
       
       // Reset form
       setTransferForm({
@@ -477,7 +477,20 @@ export default function INFTDashboard() {
 
     } catch (error) {
       console.error('❌ Transfer failed:', error)
-      alert(`Transfer failed: ${error.message}`)
+      
+      // Show user-friendly error message
+      let userMessage = error.message
+      
+      // Add helpful context for common errors
+      if (error.message.includes('0G Network RPC error')) {
+        userMessage += '\n\nTroubleshooting:\n• Check your internet connection\n• The 0G testnet may be experiencing high load\n• Try again in a few moments'
+      } else if (error.message.includes('insufficient funds')) {
+        userMessage += '\n\nPlease ensure you have enough 0G tokens for gas fees.'
+      } else if (error.message.includes('Transfer proof verification failed')) {
+        userMessage += '\n\nThe TEE attestation proof could not be verified. Please contact support.'
+      }
+      
+      alert(`❌ Transfer Failed\n\n${userMessage}`)
     } finally {
       setIsTransferring(false)
     }
