@@ -21,6 +21,7 @@ contract CreditUse {
         uint256 totalTimeHost2;   // total tracking time in minutes for host2
         uint256 downtimeHost1;
         uint256 downtimeHost2;
+        bool isComplete;          // true if both hosts are registered
     }
 
     HostedLLMEntry[] public hostedLLMs;
@@ -56,7 +57,9 @@ contract CreditUse {
         hostedLLMs[llmId].poolBalance += tokensUsed;
     }
 
+    // Register or update LLM - if field is 0/empty, it keeps existing value
     function registerLLM(
+        uint256 llmId,              // Pass hostedLLMs.length to create new, or existing ID to update
         address host1,
         address host2,
         string calldata shardUrl1,
@@ -64,30 +67,58 @@ contract CreditUse {
         string calldata modelName,
         uint256 totalTimeHost1,
         uint256 totalTimeHost2
-    ) external onlyOwner returns (uint256 llmId) {
-        require(host1 != address(0) && host2 != address(0), "Invalid host");
-        require(
-            bytes(shardUrl1).length > 0 && bytes(shardUrl2).length > 0,
-            "Invalid URL"
-        );
-        require(bytes(modelName).length > 0, "Invalid model");
-        require(totalTimeHost1 > 0 || totalTimeHost2 > 0, "At least one total time > 0");
-
-        hostedLLMs.push(
-            HostedLLMEntry({
-                host1: host1,
-                host2: host2,
-                shardUrl1: shardUrl1,
-                shardUrl2: shardUrl2,
-                modelName: modelName,
-                poolBalance: 0,
-                totalTimeHost1: totalTimeHost1,
-                totalTimeHost2: totalTimeHost2,
-                downtimeHost1: 0,
-                downtimeHost2: 0
-            })
-        );
-        llmId = hostedLLMs.length - 1;
+    ) external returns (uint256) {
+        // Create new entry if llmId >= array length
+        if (llmId >= hostedLLMs.length) {
+            require(bytes(modelName).length > 0, "Model name required for new entry");
+            
+            hostedLLMs.push(
+                HostedLLMEntry({
+                    host1: host1,
+                    host2: host2,
+                    shardUrl1: shardUrl1,
+                    shardUrl2: shardUrl2,
+                    modelName: modelName,
+                    poolBalance: 0,
+                    totalTimeHost1: totalTimeHost1,
+                    totalTimeHost2: totalTimeHost2,
+                    downtimeHost1: 0,
+                    downtimeHost2: 0,
+                    isComplete: (host1 != address(0) && host2 != address(0))
+                })
+            );
+            return hostedLLMs.length - 1;
+        }
+        
+        // Update existing entry - only update non-zero/non-empty fields
+        HostedLLMEntry storage entry = hostedLLMs[llmId];
+        
+        if (host1 != address(0)) {
+            entry.host1 = host1;
+        }
+        if (host2 != address(0)) {
+            entry.host2 = host2;
+        }
+        if (bytes(shardUrl1).length > 0) {
+            entry.shardUrl1 = shardUrl1;
+        }
+        if (bytes(shardUrl2).length > 0) {
+            entry.shardUrl2 = shardUrl2;
+        }
+        if (bytes(modelName).length > 0) {
+            entry.modelName = modelName;
+        }
+        if (totalTimeHost1 > 0) {
+            entry.totalTimeHost1 = totalTimeHost1;
+        }
+        if (totalTimeHost2 > 0) {
+            entry.totalTimeHost2 = totalTimeHost2;
+        }
+        
+        // Update completion status
+        entry.isComplete = (entry.host1 != address(0) && entry.host2 != address(0));
+        
+        return llmId;
     }
     
     function reportDowntime(uint256 llmId, uint256 minutesDownHost1, uint256 minutesDownHost2) external onlyOwner {
@@ -195,6 +226,10 @@ contract CreditUse {
         }
         if (host2 != address(0)) {
             e.host2 = host2;
+            // If we're adding host2 and it wasn't complete, mark as complete
+            if (!e.isComplete && e.host1 != address(0)) {
+                e.isComplete = true;
+            }
         }
         if (bytes(shardUrl1).length != 0) {
             e.shardUrl1 = shardUrl1;
@@ -205,5 +240,35 @@ contract CreditUse {
         if (bytes(modelName).length != 0) {
             e.modelName = modelName;
         }
+    }
+
+    // Get all incomplete LLMs (slots waiting for second host)
+    function getIncompleteLLMs() external view returns (uint256[] memory) {
+        uint256 count = 0;
+        
+        // Count incomplete LLMs
+        for (uint256 i = 0; i < hostedLLMs.length; i++) {
+            if (!hostedLLMs[i].isComplete) {
+                count++;
+            }
+        }
+        
+        // Create array of incomplete LLM IDs
+        uint256[] memory incompleteLLMs = new uint256[](count);
+        uint256 index = 0;
+        
+        for (uint256 i = 0; i < hostedLLMs.length; i++) {
+            if (!hostedLLMs[i].isComplete) {
+                incompleteLLMs[index] = i;
+                index++;
+            }
+        }
+        
+        return incompleteLLMs;
+    }
+
+    // Get total count of hosted LLMs
+    function getTotalLLMs() external view returns (uint256) {
+        return hostedLLMs.length;
     }
 }
