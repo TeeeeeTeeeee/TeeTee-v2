@@ -8,6 +8,7 @@ import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useCheckHostedLLM } from '../lib/contracts/creditUse/reads/useCheckHostedLLM';
+import { useAccount } from 'wagmi';
 
 interface Model {
   id: number;
@@ -22,14 +23,12 @@ interface AddModelForm {
   modelName: string;
   shard: string;
   walletAddress: string;
-  totalTime: string;
 }
 
 interface JoinHostForm {
   llmId: number;
   shard: string;
   walletAddress: string;
-  totalTime: string;
 }
 
 const AVAILABLE_MODELS = [
@@ -61,14 +60,12 @@ const ModelsPage = () => {
   const [formData, setFormData] = useState<AddModelForm>({
     modelName: '',
     shard: '',
-    walletAddress: '',
-    totalTime: '100'
+    walletAddress: ''
   });
   const [joinFormData, setJoinFormData] = useState<JoinHostForm>({
     llmId: 0,
     shard: '',
-    walletAddress: '',
-    totalTime: '100'
+    walletAddress: ''
   });
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
@@ -77,6 +74,7 @@ const ModelsPage = () => {
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
+  const { address: connectedAddress } = useAccount();
 
   // Simulate loading models from storage/API
   useEffect(() => {
@@ -112,8 +110,7 @@ const ModelsPage = () => {
     setFormData({
       modelName: '',
       shard: '',
-      walletAddress: '',
-      totalTime: '100'
+      walletAddress: ''
     });
     resetWrite();
   };
@@ -125,21 +122,30 @@ const ModelsPage = () => {
     setJoinFormData({
       llmId: 0,
       shard: '',
-      walletAddress: '',
-      totalTime: '100'
+      walletAddress: ''
     });
   };
 
   // Handle form submission for registering first host
   const handleAddModel = async () => {
-    if (!formData.modelName || !formData.shard || !formData.walletAddress || !formData.totalTime || totalLLMs === undefined) return;
+    if (!formData.modelName || !formData.shard || !formData.walletAddress || totalLLMs === undefined) {
+      return;
+    }
+
+    if (!connectedAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
 
     try {
+      resetWrite();
+      
       const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
       
       // Register first host on blockchain (creates slot)
       // Pass totalLLMs as llmId to create new entry
       // Use address(0) for host2 and empty string for shardUrl2 to leave them empty
+      // Pass 0 for time fields - these will be set by oracle
       await registerLLM(
         Number(totalLLMs),                              // llmId - array length for new entry
         formData.walletAddress,                         // host1
@@ -147,23 +153,26 @@ const ModelsPage = () => {
         selectedShard?.id || formData.shard,           // shardUrl1
         '',                                             // shardUrl2 - empty
         formData.modelName,                            // modelName
-        parseInt(formData.totalTime),                  // totalTimeHost1
+        0,                                              // totalTimeHost1 - will be set by oracle
         0                                               // totalTimeHost2 - empty
       );
     } catch (error) {
-      console.error('Failed to register LLM:', error);
+      // Error is surfaced via wallet UI
     }
   };
 
   // Handle joining as second host
   const handleJoinAsSecondHost = async () => {
-    if (selectedLLMId === null || !joinFormData.shard || !joinFormData.walletAddress || !joinFormData.totalTime) return;
+    if (selectedLLMId === null || !joinFormData.shard || !joinFormData.walletAddress) return;
 
     try {
+      resetWrite();
+      
       const selectedShard = AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard);
       
       // Join as second host on blockchain
       // Pass existing llmId, leave host1 fields as 0/empty to keep them, fill in host2 fields
+      // Pass 0 for time - will be set by oracle
       await registerLLM(
         selectedLLMId,                                  // llmId - existing entry
         '0x0000000000000000000000000000000000000000',  // host1 - empty (keep existing)
@@ -172,10 +181,11 @@ const ModelsPage = () => {
         selectedShard?.id || joinFormData.shard,       // shardUrl2
         '',                                             // modelName - empty (keep existing)
         0,                                              // totalTimeHost1 - 0 (keep existing)
-        parseInt(joinFormData.totalTime)               // totalTimeHost2
+        0                                               // totalTimeHost2 - will be set by oracle
       );
     } catch (error) {
       console.error('Failed to join as second host:', error);
+      // Error is surfaced via wallet UI
     }
   };
 
@@ -187,20 +197,20 @@ const ModelsPage = () => {
       
       // If it was creating a new model (not joining)
       if (formData.modelName && !showJoinForm) {
-        const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
-        
-        const newModel: Model = {
-          id: Date.now(),
-          name: formData.modelName,
+    const selectedShard = AVAILABLE_SHARDS.find(s => s.id === formData.shard);
+    
+    const newModel: Model = {
+      id: Date.now(),
+      name: formData.modelName,
           shard: `${selectedShard?.name || formData.shard} (Waiting for 2nd host)`,
-          walletAddress: formData.walletAddress,
+      walletAddress: formData.walletAddress,
           status: 'inactive',
-          dateAdded: new Date()
-        };
+      dateAdded: new Date()
+    };
 
-        const updatedModels = [newModel, ...models];
-        saveModels(updatedModels);
-        resetForm();
+    const updatedModels = [newModel, ...models];
+    saveModels(updatedModels);
+    resetForm();
       } 
       // If it was joining as second host
       else if (showJoinForm) {
@@ -402,49 +412,30 @@ const ModelsPage = () => {
                   <label htmlFor="walletAddress" className="block text-sm font-medium text-gray-700 mb-2">
                     Wallet Address *
                   </label>
+                  <div className="flex gap-2">
                   <input
                     id="walletAddress"
                     type="text"
                     value={formData.walletAddress}
                     onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
                     placeholder="0x1234567890abcdef..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="border-t border-gray-200"></div>
-
-              {/* Step 4: Hosting Duration */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">4</span>
-                    Hosting Duration
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">Set your hosting time commitment in minutes</p>
-                </div>
-                
-                <div className="max-w-2xl">
-                  <label htmlFor="totalTime" className="block text-sm font-medium text-gray-700 mb-2">
-                    Hosting Time (minutes) *
-                  </label>
-                  <input
-                    id="totalTime"
-                    type="number"
-                    min="1"
-                    value={formData.totalTime}
-                    onChange={(e) => setFormData({ ...formData, totalTime: e.target.value })}
-                    placeholder="100"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                  />
-                  <p className="text-xs text-gray-500 mt-2">Note: Another host will need to join to complete the LLM registration</p>
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => connectedAddress && setFormData({ ...formData, walletAddress: connectedAddress })}
+                      disabled={!connectedAddress}
+                      className="px-4 py-3 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm font-medium"
+                      title={connectedAddress ? 'Use connected wallet' : 'No wallet connected'}
+                    >
+                      Use Connected
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Summary - Show when all fields are filled */}
-              {formData.modelName && formData.shard && formData.walletAddress && formData.totalTime && (
+              {formData.modelName && formData.shard && formData.walletAddress && (
                 <div className="mt-6 p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-lg border border-violet-200">
                   <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
                     <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -465,12 +456,9 @@ const ModelsPage = () => {
                       <span className="font-medium">Your Wallet:</span> 
                       <span className="text-violet-700 font-mono text-xs">{formData.walletAddress.slice(0, 10)}...</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">Hosting Time:</span> 
-                      <span className="text-violet-700">{formData.totalTime} minutes</span>
-                    </div>
                     <div className="mt-3 pt-3 border-t border-violet-200">
                       <p className="text-xs text-gray-600">⚠️ This will create a slot waiting for a second host to complete the registration</p>
+                      <p className="text-xs text-gray-600 mt-1">ℹ️ Hosting duration will be set by the oracle</p>
                     </div>
                   </div>
                 </div>
@@ -480,13 +468,13 @@ const ModelsPage = () => {
             {/* Form Footer */}
             <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
               <div className="flex items-center gap-4">
-                <button
-                  onClick={resetForm}
+              <button
+                onClick={resetForm}
                   disabled={isWriting || isConfirming}
                   className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
+              >
+                Cancel
+              </button>
                 
                 {/* Transaction Status */}
                 {(isWriting || isConfirming) && (
@@ -505,7 +493,7 @@ const ModelsPage = () => {
 
               <button
                 onClick={handleAddModel}
-                disabled={!formData.modelName || !formData.shard || !formData.walletAddress || !formData.totalTime || isWriting || isConfirming}
+                disabled={!formData.modelName || !formData.shard || !formData.walletAddress || isWriting || isConfirming}
                 className="px-6 py-2 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {(isWriting || isConfirming) ? (
@@ -515,9 +503,9 @@ const ModelsPage = () => {
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
                     Create Hosting Slot
                   </>
                 )}
