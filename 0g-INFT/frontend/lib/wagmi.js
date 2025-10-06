@@ -11,7 +11,12 @@ export const config = createConfig({
     // walletConnect({ projectId: 'your-project-id' }),
   ],
   transports: {
-    [ZERO_G_NETWORK.id]: http('https://evmrpc-testnet.0g.ai'),
+    [ZERO_G_NETWORK.id]: http('https://evmrpc-testnet.0g.ai', {
+      // Enhanced RPC configuration based on 0G Network documentation
+      timeout: 60000, // 60 second timeout as suggested in 0G docs
+      retryCount: 10, // Retry up to 10 times for reliability
+      retryDelay: 3000, // 3 second delay between retries
+    }),
   },
 })
 

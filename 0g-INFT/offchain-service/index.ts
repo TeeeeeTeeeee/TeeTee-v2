@@ -94,24 +94,45 @@ interface LLMConfig {
   model: string;
   temperature: number;
   maxTokens: number;
-  seed: number;
   requestTimeoutMs: number;
   maxContextQuotes: number;
   devFallback: boolean;
+  apiKey: string;
 }
 
-interface OllamaGenerateResponse {
+interface OpenAIChoice {
+  index: number;
+  message?: {
+    role: string;
+    content: string;
+  };
+  delta?: {
+    role?: string;
+    content?: string;
+  };
+  finish_reason?: string | null;
+  logprobs?: any;
+}
+
+interface OpenAIChatResponse {
+  id: string;
+  object: string;
+  created: number;
   model: string;
-  created_at: string;
-  response: string;
-  done: boolean;
-  context?: number[];
-  total_duration?: number;
-  load_duration?: number;
-  prompt_eval_count?: number;
-  prompt_eval_duration?: number;
-  eval_count?: number;
-  eval_duration?: number;
+  choices: OpenAIChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+interface OpenAIChatStreamChunk {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: OpenAIChoice[];
 }
 
 interface LLMCallMetrics {
@@ -206,16 +227,20 @@ class INFTOffChainService {
    */
   private loadLLMConfig(): void {
     this.llmConfig = {
-      provider: process.env.LLM_PROVIDER || 'ollama',
-      host: process.env.LLM_HOST || 'http://localhost:11434',
-      model: process.env.LLM_MODEL || 'llama3.2:3b-instruct-q4_K_M',
+      provider: process.env.LLM_PROVIDER || 'phala-redpill',
+      host: process.env.LLM_HOST || 'https://api.red-pill.ai',
+      model: process.env.LLM_MODEL || 'phala/deepseek-r1-70b',
       temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.2'),
       maxTokens: parseInt(process.env.LLM_MAX_TOKENS || '256'),
-      seed: parseInt(process.env.LLM_SEED || '42'),
-      requestTimeoutMs: parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || '20000'),
+      requestTimeoutMs: parseInt(process.env.LLM_REQUEST_TIMEOUT_MS || '30000'),
       maxContextQuotes: parseInt(process.env.LLM_MAX_CONTEXT_QUOTES || '25'),
-      devFallback: process.env.LLM_DEV_FALLBACK === 'true'
+      devFallback: process.env.LLM_DEV_FALLBACK === 'true',
+      apiKey: process.env.REDPILL_API_KEY || ''
     };
+
+    if (!this.llmConfig.apiKey) {
+      throw new Error('REDPILL_API_KEY environment variable is required');
+    }
 
     console.log('🤖 LLM configuration loaded:');
     console.log('  - Provider:', this.llmConfig.provider);
@@ -223,6 +248,7 @@ class INFTOffChainService {
     console.log('  - Model:', this.llmConfig.model);
     console.log('  - Temperature:', this.llmConfig.temperature);
     console.log('  - Max Tokens:', this.llmConfig.maxTokens);
+    console.log('  - API Key:', this.llmConfig.apiKey ? 'Configured' : 'Missing');
     console.log('  - Dev Fallback:', this.llmConfig.devFallback);
   }
 
@@ -236,7 +262,7 @@ class INFTOffChainService {
       resetTimeout: 30000, // Try again after 30 seconds
       rollingCountTimeout: 10000, // 10 second rolling window
       rollingCountBuckets: 10,
-      name: 'LLM-Ollama-Circuit',
+      name: 'LLM-RedPill-Circuit',
       group: 'llm-calls'
     };
 
@@ -1140,49 +1166,63 @@ Response:`;
   }
 
   /**
-   * Direct LLM API call (wrapped by circuit breaker)
+   * Direct LLM API call (wrapped by circuit breaker) - OpenAI-compatible RedPill API
    */
   private async callLLMDirect(prompt: string): Promise<string> {
     const requestPayload = {
       model: this.llmConfig.model,
-      prompt: prompt,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
       stream: false,
-      options: {
-        temperature: this.llmConfig.temperature,
-        seed: this.llmConfig.seed,
-        num_predict: this.llmConfig.maxTokens
-      }
+      temperature: this.llmConfig.temperature,
+      max_tokens: this.llmConfig.maxTokens
     };
 
-    console.log(`🌐 Calling Ollama API: ${this.llmConfig.host}/api/generate`);
+    console.log(`🌐 Calling RedPill API: ${this.llmConfig.host}/v1/chat/completions`);
     
     try {
-      const response: AxiosResponse<OllamaGenerateResponse> = await axios.post(
-        `${this.llmConfig.host}/api/generate`,
+      const response: AxiosResponse<OpenAIChatResponse> = await axios.post(
+        `${this.llmConfig.host}/v1/chat/completions`,
         requestPayload,
         {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
+            'Accept': 'application/json'
           }
         }
       );
 
-      if (!response.data || !response.data.response) {
-        throw new Error('Invalid response from Ollama API');
+      if (!response.data || !response.data.choices || response.data.choices.length === 0) {
+        throw new Error('Invalid response from RedPill API');
       }
 
-      console.log(`⚡ LLM response received (${response.data.response.length} chars)`);
-      return response.data.response.trim();
+      const choice = response.data.choices[0];
+      if (!choice.message || !choice.message.content) {
+        throw new Error('No content in RedPill API response');
+      }
+
+      console.log(`⚡ LLM response received (${choice.message.content.length} chars)`);
+      return choice.message.content.trim();
       
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED') {
-          throw new Error(`Cannot connect to Ollama at ${this.llmConfig.host}. Is Ollama running?`);
+        if (error.response?.status === 401) {
+          throw new Error('Invalid RedPill API key. Please check your REDPILL_API_KEY environment variable.');
+        } else if (error.response?.status === 429) {
+          throw new Error('RedPill API rate limit exceeded. Please try again later.');
+        } else if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Cannot connect to RedPill API at ${this.llmConfig.host}. Please check your internet connection.`);
         } else if (error.code === 'ECONNABORTED') {
           throw new Error(`LLM request timeout after ${this.llmConfig.requestTimeoutMs}ms`);
         } else {
-          throw new Error(`Ollama API error: ${error.message}`);
+          const errorMsg = error.response?.data?.error?.message || error.message;
+          throw new Error(`RedPill API error: ${errorMsg}`);
         }
       }
       throw error;
@@ -1190,30 +1230,34 @@ Response:`;
   }
 
   /**
-   * Streaming LLM API call for Server-Sent Events (Phase 4)
+   * Streaming LLM API call for Server-Sent Events (Phase 4) - OpenAI-compatible RedPill API
    */
   private async callLLMDirectStreaming(prompt: string, session: any): Promise<void> {
     const requestPayload = {
       model: this.llmConfig.model,
-      prompt: prompt,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
       stream: true, // Enable streaming
-      options: {
-        temperature: this.llmConfig.temperature,
-        seed: this.llmConfig.seed,
-        num_predict: this.llmConfig.maxTokens
-      }
+      temperature: this.llmConfig.temperature,
+      max_tokens: this.llmConfig.maxTokens
     };
 
-    console.log(`🌐 Calling Ollama API (streaming): ${this.llmConfig.host}/api/generate`);
+    console.log(`🌐 Calling RedPill API (streaming): ${this.llmConfig.host}/v1/chat/completions`);
     
     try {
       const response = await axios.post(
-        `${this.llmConfig.host}/api/generate`,
+        `${this.llmConfig.host}/v1/chat/completions`,
         requestPayload,
         {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
+            'Accept': 'text/event-stream'
           },
           responseType: 'stream'
         }
@@ -1228,35 +1272,57 @@ Response:`;
         
         for (const line of lines) {
           try {
-            const data = JSON.parse(line);
-            
-            if (data.response) {
-              fullResponse += data.response;
-              tokenCount++;
+            // Handle OpenAI-style SSE format: "data: {json}"
+            if (line.startsWith('data: ')) {
+              const dataStr = line.substring(6); // Remove "data: " prefix
               
-              // Send token to SSE client
-              session.push({
-                type: 'token',
-                content: data.response,
-                tokenCount: tokenCount,
-                done: data.done || false
-              }, 'token');
-            }
-            
-            // Check if stream is complete
-            if (data.done) {
-              // Send final completion event
-              session.push({
-                type: 'completion',
-                fullResponse: fullResponse,
-                totalTokens: tokenCount,
-                done: true
-              }, 'completion');
-              console.log(`⚡ Streaming LLM response completed (${tokenCount} tokens, ${fullResponse.length} chars)`);
-              return;
+              // Check for end of stream
+              if (dataStr === '[DONE]') {
+                // Send final completion event
+                session.push({
+                  type: 'completion',
+                  fullResponse: fullResponse,
+                  totalTokens: tokenCount,
+                  done: true
+                }, 'completion');
+                console.log(`⚡ Streaming LLM response completed (${tokenCount} tokens, ${fullResponse.length} chars)`);
+                return;
+              }
+              
+              const data: OpenAIChatStreamChunk = JSON.parse(dataStr);
+              
+              if (data.choices && data.choices.length > 0) {
+                const choice = data.choices[0];
+                
+                if (choice.delta && choice.delta.content) {
+                  fullResponse += choice.delta.content;
+                  tokenCount++;
+                  
+                  // Send token to SSE client
+                  session.push({
+                    type: 'token',
+                    content: choice.delta.content,
+                    tokenCount: tokenCount,
+                    done: choice.finish_reason !== null
+                  }, 'token');
+                }
+                
+                // Check if stream is complete
+                if (choice.finish_reason !== null) {
+                  // Send final completion event
+                  session.push({
+                    type: 'completion',
+                    fullResponse: fullResponse,
+                    totalTokens: tokenCount,
+                    done: true
+                  }, 'completion');
+                  console.log(`⚡ Streaming LLM response completed (${tokenCount} tokens, ${fullResponse.length} chars)`);
+                  return;
+                }
+              }
             }
           } catch (parseError) {
-            // Skip invalid JSON lines
+            // Skip invalid JSON lines or non-data lines
             console.warn('Failed to parse streaming response line:', line);
           }
         }
@@ -1285,12 +1351,17 @@ Response:`;
       let errorMessage = 'Unknown error';
       
       if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED') {
-          errorMessage = `Cannot connect to Ollama at ${this.llmConfig.host}. Is Ollama running?`;
+        if (error.response?.status === 401) {
+          errorMessage = 'Invalid RedPill API key. Please check your REDPILL_API_KEY environment variable.';
+        } else if (error.response?.status === 429) {
+          errorMessage = 'RedPill API rate limit exceeded. Please try again later.';
+        } else if (error.code === 'ECONNREFUSED') {
+          errorMessage = `Cannot connect to RedPill API at ${this.llmConfig.host}. Please check your internet connection.`;
         } else if (error.code === 'ECONNABORTED') {
           errorMessage = `LLM request timeout after ${this.llmConfig.requestTimeoutMs}ms`;
         } else {
-          errorMessage = `Ollama API error: ${error.message}`;
+          const errorMsg = error.response?.data?.error?.message || error.message;
+          errorMessage = `RedPill API error: ${errorMsg}`;
         }
       } else if (error instanceof Error) {
         errorMessage = error.message;
@@ -1320,8 +1391,8 @@ Response:`;
     try {
       const startTime = Date.now();
       
-      // Test circuit breaker state and LLM connectivity
-      const testResponse = await this.llmCircuitBreaker.fire('ping');
+      // Test circuit breaker state and LLM connectivity with a simple test prompt
+      const testResponse = await this.llmCircuitBreaker.fire('Hello, this is a connectivity test.');
       const latency = Date.now() - startTime;
       
       // Get circuit breaker statistics
@@ -1458,6 +1529,7 @@ Response:`;
       console.log('🚀 0G INFT Off-Chain Inference Service Started');
       console.log('=' .repeat(60));
       console.log(`🌐 Server running on http://localhost:${this.port}`);
+      console.log('🔗 LLM Provider: Phala Network RedPill API');
       console.log('📋 Available endpoints:');
       console.log('  - GET  /health       - Service health check');
       console.log('  - GET  /llm/health   - LLM health check');
