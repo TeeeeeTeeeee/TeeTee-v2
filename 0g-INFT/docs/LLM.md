@@ -7,7 +7,7 @@ The approach favors Ollama by default due to its simple local HTTP API, small mo
 ### Goals
 
 - Replace the off‑chain quote selection with LLM‑based generation grounded by the decrypted dataset (RAG‑style prompt) or pure generation.
-- Keep ERC‑7857 authorization checks, sealedKey=bytes ABI alignment, and chainId 16601.
+- Keep ERC‑7857 authorization checks, sealedKey=bytes ABI alignment, and chainId 16602.
 - Preserve existing API contract to the frontend with minimal changes, while optionally enabling streaming.
 - Return richer metadata and a proof stub that includes model id/version and transcript hash.
 - Stay aligned with 0G documentation and the current implementation of storage and oracle stubs.
@@ -35,7 +35,7 @@ The approach favors Ollama by default due to its simple local HTTP API, small mo
 
 ## 1) Current State Snapshot (for alignment)
 
-- Network: 0G Galileo testnet, chainId 16601.
+- Network: 0G Galileo testnet, chainId 16602.
 - Contracts (fixed):
   - `INFTFixed.sol` at `0x18db2ED477A25Aac615D803aE7be1d3598cdfF95`
   - `IDataVerifierAdapterFixed.sol` at `0x730892959De01BcB6465C68aA74dCdC782af518B`

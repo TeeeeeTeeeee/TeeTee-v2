@@ -7,7 +7,7 @@ Successfully implemented a complete frontend interface for the 0G INFT Quote Gen
 ## Features Implemented
 
 ### ✅ Wallet Integration
-- MetaMask wallet connection with 0G Galileo testnet (Chain ID 16601)
+- MetaMask wallet connection with 0G Galileo testnet (Chain ID 16602)
 - Automatic network addition to user's wallet
 - Account display and disconnect functionality
 - Balance tracking for user's INFTs

@@ -25,7 +25,7 @@ This plan is split into clear **phases** you can hand to Cursor. It follows the 
 2. Add `.env` with `PRIVATE_KEY`, `RPC_URL`, `CHAIN_ID`.
 3. Configure **0G Testnet** (choose one per docs):
    - **Newton** Chain ID `16600`
-   - **Galileo** Chain ID `16601` (RPC often `https://evmrpc-testnet.0g.ai` — confirm in docs)
+   - **Galileo** Chain ID `16602` (RPC often `https://evmrpc-testnet.0g.ai` — confirm in docs)
 4. Add minimal NPM scripts: build, test, deploy.
 5. Add a placeholder **OracleStub** contract for development (returns `true` from `verifyProof`), to be swapped with a real oracle endpoint later per Integration guide.
 

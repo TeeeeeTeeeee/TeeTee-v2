@@ -1,6 +1,6 @@
 ## Phased Plan: Replace Quote Generator with Self‑Hosted LLM (Ollama)
 
-This plan outlines concrete phases to migrate the off‑chain "Quote generator" to a local LLM (Ollama by default) while preserving ERC‑7857, 0G Storage integration, and current on‑chain flows on 0G Galileo (16601).
+This plan outlines concrete phases to migrate the off‑chain "Quote generator" to a local LLM (Ollama by default) while preserving ERC‑7857, 0G Storage integration, and current on‑chain flows on 0G Galileo (16602).
 
 Each phase lists scope, tasks, deliverables, acceptance criteria, risks/mitigations, and validation queries for Perplexity Pro to confirm unknowns against official docs.
 

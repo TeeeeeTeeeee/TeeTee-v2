@@ -8,7 +8,7 @@
 
 ### 🚀 Successfully Deployed Contracts
 
-**Network:** 0G Galileo Testnet (Chain ID: 16601)
+**Network:** 0G Galileo Testnet (Chain ID: 16602)
 **Deployer:** 0x32F91E4E2c60A9C16cAE736D3b42152B331c147F
 **Block Explorer:** https://chainscan-galileo.0g.ai
 

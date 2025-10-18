@@ -164,7 +164,7 @@ async function main() {
   console.log(`\n🌐 Block Explorer:`);
   
   // Provide block explorer links based on network
-  if (network.chainId === 16601n) {
+  if (network.chainId === 16602n) {
     console.log(`Galileo Explorer: https://chainscan-galileo.0g.ai`);
   } else if (network.chainId === 16600n) {
     console.log(`Newton Explorer: https://chainscan-newton.0g.ai`);

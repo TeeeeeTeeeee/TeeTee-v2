@@ -1,6 +1,6 @@
 // 0G Network Configuration
 export const ZERO_G_NETWORK = {
-  id: 16601,
+  id: 16602,
   name: '0G Galileo Testnet',
   nativeCurrency: {
     name: '0G',
@@ -21,11 +21,11 @@ export const ZERO_G_NETWORK = {
   testnet: true,
 }
 
-// Contract Addresses - Using Fixed Implementation
+// Contract Addresses - New Deployment on Galileo Chain ID 16602
 export const CONTRACT_ADDRESSES = {
-  INFT: '0x18db2ED477A25Aac615D803aE7be1d3598cdfF95', // Fixed INFT with custom errors
-  DATA_VERIFIER: '0x730892959De01BcB6465C68aA74dCdC782af518B', // Fixed DataVerifier with error bubbling
-  ORACLE_STUB: '0x567e70a52AB420c525D277b0020260a727A735dB', // Same oracle
+  INFT: '0x9C3FFe10e61B1750F61D2E0A64c6bBE8984BA268', // INFTFixed on new network
+  DATA_VERIFIER: '0xd84254b80e4C41A88aF309793F180a206421b450', // DataVerifierAdapterFixed
+  ORACLE_STUB: '0x78aCb19366A0042dA3263747bda14BA43d68B0de', // OracleStub
 }
 
 // Off-chain service configuration

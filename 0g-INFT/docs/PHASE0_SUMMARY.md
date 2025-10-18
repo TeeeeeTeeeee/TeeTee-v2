@@ -14,12 +14,12 @@ Created a ready Hardhat TypeScript project with 0G testnet configuration per 0G 
 
 2. ✅ **Environment Configuration** 
    - `.env.example` with all required variables
-   - Support for Newton (16600) and Galileo (16601) testnets
+   - Support for Newton (16600) and Galileo (16602) testnets
    - Clear documentation of required settings
 
 3. ✅ **0G Testnet Configuration**
    - Newton Chain ID `16600` configured
-   - Galileo Chain ID `16601` configured  
+   - Galileo Chain ID `16602` configured  
    - RPC URL: `https://evmrpc-testnet.0g.ai`
    - Gas settings optimized for 0G networks
 

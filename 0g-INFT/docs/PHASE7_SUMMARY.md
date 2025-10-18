@@ -191,7 +191,7 @@ The infrastructure is now ready for Phase 8 (ZKP path) with:
 ## Blockchain Verification
 
 **0G Galileo Testnet:**
-- **Chain ID:** 16601
+- **Chain ID:** 16602
 - **Transfer Transaction:** [0x50fd65b7d6220d3ec32b6a06524fa6c456120c44c7fd32822648e47f2a192870](https://chainscan-galileo.0g.ai/tx/0x50fd65b7d6220d3ec32b6a06524fa6c456120c44c7fd32822648e47f2a192870)
 - **Block Explorer:** https://chainscan-galileo.0g.ai
 - **Current Network Status:** ✅ Active

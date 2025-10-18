@@ -18,12 +18,12 @@ async function main() {
     console.log(`🔗 Chain ID: ${network.chainId}`);
     
     // Verify it matches expected 0G chain IDs
-    const expectedChains = [16600, 16601, 31337]; // Newton, Galileo, Hardhat local
+    const expectedChains = [16600, 16602, 31337]; // Newton, Galileo, Hardhat local
     if (!expectedChains.includes(Number(network.chainId))) {
       console.warn(`⚠️  Warning: Chain ID ${network.chainId} is not a known 0G testnet`);
     } else {
       const chainName = network.chainId === 16600n ? "Newton" : 
-                       network.chainId === 16601n ? "Galileo" : 
+                       network.chainId === 16602n ? "Galileo" : 
                        network.chainId === 31337n ? "Hardhat Local" : "Unknown";
       console.log(`✅ Confirmed 0G ${chainName} testnet connection`);
     }
@@ -67,7 +67,7 @@ async function main() {
     console.log(`   Check your .env file and hardhat.config.ts`);
     console.log(`   Verify RPC URLs are accessible:`);
     console.log(`   - Newton: https://evmrpc-testnet.0g.ai (Chain ID: 16600)`);
-    console.log(`   - Galileo: https://evmrpc-testnet.0g.ai (Chain ID: 16601)`);
+    console.log(`   - Galileo: https://evmrpc-testnet.0g.ai (Chain ID: 16602)`);
     
     process.exit(1);
   }

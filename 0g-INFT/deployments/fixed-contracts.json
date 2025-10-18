@@ -1,7 +1,7 @@
 {
   "network": {
     "name": "galileo",
-    "chainId": "16601"
+    "chainId": "16602"
   },
   "timestamp": "2025-08-20T15:14:55.517Z",
   "deployer": "0x32F91E4E2c60A9C16cAE736D3b42152B331c147F",

@@ -517,7 +517,7 @@ export default function INFTDashboard() {
       
       // Define 0G chain
       const zeroGChain = defineChain({
-        id: 16601,
+        id: 16602,
         name: '0G Galileo Testnet',
         network: '0g-galileo',
         nativeCurrency: {

@@ -58,7 +58,7 @@ async function main() {
     oracleAddress: CORRECT_ORACLE_ADDRESS,
     network: {
       name: 'galileo',
-      chainId: '16601'
+      chainId: '16602'
     },
     note: 'Redeployed with correct oracle address for transfer functionality'
   };
