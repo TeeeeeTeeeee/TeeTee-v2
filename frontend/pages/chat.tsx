@@ -49,6 +49,10 @@ const ChatPage = () => {
 
   // 0G storage: auto-save transcript after each message exchange
   const [chatFilename, setChatFilename] = useState<string>(`chat_${Date.now()}.txt`);
+  
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<Conversation | null>(null);
 
   const { address, isConnected } = useAccount();
 
@@ -265,6 +269,54 @@ const ChatPage = () => {
     setChatFilename(`chat_${Date.now()}.txt`);
   };
 
+  // Handle delete button click
+  const handleDeleteClick = (e: React.MouseEvent, chat: Conversation) => {
+    e.stopPropagation(); // Prevent loading the chat
+    setChatToDelete(chat);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm deletion
+  const confirmDelete = async () => {
+    if (!chatToDelete) return;
+
+    try {
+      const res = await fetch('/api/delete-chat-session', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: chatToDelete._id }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete chat session');
+      }
+
+      // If the deleted chat was active, clear the messages
+      if (activeConversation === chatToDelete._id) {
+        setMessages([]);
+        setActiveConversation(null);
+        setChatFilename(`chat_${Date.now()}.txt`);
+      }
+
+      // Refresh the chat list
+      await fetchChatSessions();
+      
+      console.log('Chat session deleted:', chatToDelete._id);
+    } catch (err) {
+      console.error('Error deleting chat session:', err);
+      alert('Failed to delete chat session. Please try again.');
+    } finally {
+      setShowDeleteModal(false);
+      setChatToDelete(null);
+    }
+  };
+
+  // Cancel deletion
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setChatToDelete(null);
+  };
+
   const handleBuyBundle = async () => {
     if (!isConnected || !bundlePrice) return;
     try {
@@ -359,6 +411,32 @@ const ChatPage = () => {
 
   return (
     <div className="relative flex h-screen font-inter">
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Chat?</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "{chatToDelete?.filename}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <motion.div 
         className="fixed left-0 top-0 bg-white flex flex-col h-screen border-r border-gray-200"
@@ -495,29 +573,41 @@ const ChatPage = () => {
               )
             ) : conversations.length > 0 ? (
               conversations.map((chat) => (
-                <button
-                  key={chat._id}
-                  onClick={() => loadChatSession(chat)}
-                  disabled={isLoadingMessages}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
-                    activeConversation === chat._id
-                      ? 'bg-violet-100 text-violet-900'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  } disabled:opacity-50`}
-                  title={!isOpen ? chat.filename : ""}
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                  {isOpen && (
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-medium">{chat.filename}</div>
-                      <div className="text-xs text-gray-500 truncate">
-                        {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
+                <div key={chat._id} className="relative group">
+                  <button
+                    onClick={() => loadChatSession(chat)}
+                    disabled={isLoadingMessages}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
+                      activeConversation === chat._id
+                        ? 'bg-violet-100 text-violet-900'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    } disabled:opacity-50`}
+                    title={!isOpen ? chat.filename : ""}
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    {isOpen && (
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate font-medium">{chat.filename}</div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
+                        </div>
                       </div>
-                    </div>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <button
+                      onClick={(e) => handleDeleteClick(e, chat)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete chat"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   )}
-                </button>
+                </div>
               ))
             ) : (
               isOpen && !isLoadingSessions && (
