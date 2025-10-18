@@ -1,16 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { connectToDatabase } from '../../utils/mongodb';
-
-type ChatSession = {
-  _id: string;
-  walletAddress: string;
-  filename: string;
-  rootHash: string | null;
-  txHash: string;
-  messageCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
+import { getSessionsByWallet, type ChatSession } from '../../utils/json-storage';
 
 type SuccessResponse = {
   sessions: ChatSession[];
@@ -37,30 +26,12 @@ export default async function handler(
       return res.status(400).json({ error: 'Wallet address is required' });
     }
 
-    const { db } = await connectToDatabase();
-    const collection = db.collection('chatSessions');
-
-    // Find all sessions for this wallet address (normalized to lowercase)
-    const sessions = await collection
-      .find({ walletAddress: walletAddress.toLowerCase() })
-      .sort({ createdAt: -1 }) // Most recent first
-      .toArray();
-
-    // Transform MongoDB documents to JSON-serializable format
-    const formattedSessions: ChatSession[] = sessions.map((session) => ({
-      _id: session._id.toString(),
-      walletAddress: session.walletAddress,
-      filename: session.filename,
-      rootHash: session.rootHash,
-      txHash: session.txHash,
-      messageCount: session.messageCount,
-      createdAt: session.createdAt.toISOString(),
-      updatedAt: session.updatedAt.toISOString(),
-    }));
+    // Get sessions from local JSON storage
+    const sessions = getSessionsByWallet(walletAddress);
 
     return res.status(200).json({
-      sessions: formattedSessions,
-      total: formattedSessions.length,
+      sessions,
+      total: sessions.length,
     });
   } catch (err: any) {
     console.error('get-chat-sessions error:', err);

@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { connectToDatabase } from '../../utils/mongodb';
+import { getAllSessions } from '../../utils/json-storage';
+import fs from 'node:fs';
+import path from 'node:path';
 
 type ResponseBody = {
   success: boolean;
@@ -13,37 +15,40 @@ export default async function handler(
   res: NextApiResponse<ResponseBody>,
 ) {
   try {
-    console.log('Testing MongoDB connection...');
-    console.log('MONGODB_URI exists:', !!process.env.MONGODB_URI);
+    console.log('Testing JSON storage...');
     
-    const { client, db } = await connectToDatabase();
+    const dataDir = path.join(process.cwd(), 'data');
+    const sessionsFile = path.join(dataDir, 'chat-sessions.json');
     
-    // Try to ping the database
-    await db.command({ ping: 1 });
+    // Check if data directory exists
+    const dataDirExists = fs.existsSync(dataDir);
     
-    // Get database stats
-    const stats = await db.stats();
+    // Check if sessions file exists
+    const sessionsFileExists = fs.existsSync(sessionsFile);
+    
+    // Get all sessions
+    const sessions = getAllSessions();
     
     return res.status(200).json({
       success: true,
-      message: 'Successfully connected to MongoDB!',
+      message: 'JSON storage is working!',
       details: {
-        database: db.databaseName,
-        collections: stats.collections || 0,
-        dataSize: stats.dataSize || 0,
-        indexes: stats.indexes || 0,
+        dataDirectory: dataDir,
+        dataDirExists,
+        sessionsFileExists,
+        totalSessions: sessions.length,
+        sessions: sessions.slice(0, 5), // Return first 5 sessions as sample
       },
     });
   } catch (error: any) {
-    console.error('MongoDB connection test failed:', error);
+    console.error('JSON storage test failed:', error);
     
     return res.status(500).json({
       success: false,
-      message: 'Failed to connect to MongoDB',
+      message: 'Failed to access JSON storage',
       error: error?.message || String(error),
       details: {
         errorType: error?.constructor?.name,
-        code: error?.code,
       },
     });
   }
