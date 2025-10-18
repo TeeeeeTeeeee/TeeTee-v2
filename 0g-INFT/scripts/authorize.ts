@@ -34,7 +34,7 @@ interface DeploymentData {
 
 async function loadDeploymentData(): Promise<DeploymentData> {
   const network = await ethers.provider.getNetwork();
-  const networkName = network.chainId === BigInt(16601) ? 'galileo' : 'newton';
+  const networkName = network.chainId === BigInt(16602) ? 'galileo' : 'newton';
   
   const deploymentPath = path.join(__dirname, '..', 'deployments', `${networkName}.json`);
   

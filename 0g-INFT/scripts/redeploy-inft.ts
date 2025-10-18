@@ -57,7 +57,7 @@ async function main() {
     tokenSymbol: '0G-INFT',
     network: {
       name: 'galileo',
-      chainId: '16601'
+      chainId: '16602'
     },
     note: 'Redeployed with correct DataVerifier for transfer functionality'
   };

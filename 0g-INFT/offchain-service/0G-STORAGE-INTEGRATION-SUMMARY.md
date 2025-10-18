@@ -104,7 +104,7 @@ curl -X POST http://localhost:3000/infer \
 ### **Service Endpoints**
 - **Frontend:** `http://localhost:3001` (React/Next.js)
 - **Off-chain Service:** `http://localhost:3000` (Express/TypeScript)
-- **Blockchain:** 0G Galileo Testnet (Chain ID 16601)
+- **Blockchain:** 0G Galileo Testnet (Chain ID 16602)
 
 ---
 

@@ -296,7 +296,7 @@ quotes.enc (1,136 bytes total):
 - **Frontend Interface**: `http://localhost:3001`
 - **INFT Contract**: `0xF170237160314f5D8526f981b251b56e25347Ed9`
 - **Oracle Contract**: `0x567e70a52AB420c525D277b0020260a727A735dB`
-- **0G Galileo Testnet**: Chain ID 16601
+- **0G Galileo Testnet**: Chain ID 16602
 
 ### 📋 **Example API Response**
 

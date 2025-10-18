@@ -26,7 +26,7 @@ const config: HardhatUserConfig = {
     galileo: {
       url: process.env.GALILEO_RPC_URL || "https://evmrpc-testnet.0g.ai",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
-      chainId: 16601,
+      chainId: 16602,
       gasPrice: "auto",
     },
     // For local development

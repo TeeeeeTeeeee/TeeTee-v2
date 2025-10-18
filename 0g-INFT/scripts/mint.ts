@@ -125,8 +125,8 @@ async function getNetworkInfo() {
   console.log('  - Balance:', ethers.formatEther(balance), 'OG');
   
   // Verify we're on 0G Galileo testnet
-  if (network.chainId !== 16601n) {
-    throw new Error(`Expected 0G Galileo testnet (Chain ID: 16601), but connected to Chain ID: ${network.chainId}`);
+  if (network.chainId !== 16602n) {
+    throw new Error(`Expected 0G Galileo testnet (Chain ID: 16602), but connected to Chain ID: ${network.chainId}`);
   }
   
   // Check minimum balance for transaction

@@ -215,7 +215,7 @@ When performing any transaction:
 - Manually add 0G Galileo testnet:
   - Network Name: `0G Galileo Testnet`
   - RPC URL: `https://evmrpc-testnet.0g.ai`
-  - Chain ID: `16601`
+  - Chain ID: `16602`
   - Currency Symbol: `0G`
   - Explorer: `https://chainscan-galileo.0g.ai`
 
