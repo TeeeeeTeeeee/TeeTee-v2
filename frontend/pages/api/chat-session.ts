@@ -59,6 +59,14 @@ export default async function handler(
 
     const fname = typeof filename === 'string' && filename.trim() ? filename.trim() : `chat_${Date.now()}.txt`;
 
+    // Extract preview from first user message
+    const firstUserMessage = messages.find(msg => msg.role === 'user');
+    const preview = firstUserMessage?.content 
+      ? (firstUserMessage.content.length > 60 
+          ? firstUserMessage.content.substring(0, 60).trim() 
+          : firstUserMessage.content.trim())
+      : undefined;
+
     // Create a readable stream from the transcript string
     const stream = Readable.from(transcript, { encoding: 'utf-8' });
 
@@ -79,6 +87,7 @@ export default async function handler(
           txHash,
           messageCount: messages.length,
           filename: fname, // Keep filename updated too
+          preview, // Add preview field
         });
         saved = !!updated;
         
@@ -91,6 +100,7 @@ export default async function handler(
           rootHash: rootHash || null,
           txHash,
           messageCount: messages.length,
+          preview, // Add preview field
         });
         returnedSessionId = newSession._id;
         saved = true;

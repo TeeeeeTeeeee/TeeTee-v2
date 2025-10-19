@@ -11,6 +11,7 @@ export type ChatSession = {
   _id: string;
   walletAddress: string;
   filename: string;
+  preview?: string; // First user message preview
   rootHash: string | null;
   txHash: string;
   messageCount: number;

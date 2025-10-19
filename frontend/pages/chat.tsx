@@ -19,6 +19,7 @@ interface Conversation {
   _id: string;
   walletAddress: string;
   filename: string;
+  preview?: string; // First user message preview
   rootHash: string | null;
   txHash: string;
   messageCount: number;
@@ -589,7 +590,12 @@ const ChatPage = () => {
                     </svg>
                     {isOpen && (
                       <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium">{chat.filename}</div>
+                        <div className="truncate font-medium">
+                          {chat.preview 
+                            ? (chat.preview.length > 40 ? chat.preview.substring(0, 40) + '...' : chat.preview)
+                            : chat.filename
+                          }
+                        </div>
                         <div className="text-xs text-gray-500 truncate">
                           {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
                         </div>
