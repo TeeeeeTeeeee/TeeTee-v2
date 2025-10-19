@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount } from 'wagmi';
@@ -18,6 +19,7 @@ interface Conversation {
   _id: string;
   walletAddress: string;
   filename: string;
+  preview?: string; // First user message preview
   rootHash: string | null;
   txHash: string;
   messageCount: number;
@@ -33,6 +35,7 @@ interface Message {
 }
 
 const ChatPage = () => {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -41,14 +44,16 @@ const ChatPage = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isSavingToStorage, setIsSavingToStorage] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 0G storage: auto-save transcript using /api/chat-session (stream-based)
-  const [chatFilename, setChatFilename] = useState<string>('tee_chat.txt');
-  const [chatSaving, setChatSaving] = useState<boolean>(false);
-  const [chatSaveError, setChatSaveError] = useState<string>('');
-  const [chatSaveResult, setChatSaveResult] = useState<{ filename: string; rootHash?: string; txHash: string } | null>(null);
+  // 0G storage: auto-save transcript after each message exchange
+  const [chatFilename, setChatFilename] = useState<string>(`chat_${Date.now()}.txt`);
+  
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<Conversation | null>(null);
 
   const { address, isConnected } = useAccount();
 
@@ -75,17 +80,53 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Prevent browser close/refresh during save
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isSavingToStorage) {
+        e.preventDefault();
+        e.returnValue = 'Your chat is still being saved to 0G Storage. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isSavingToStorage]);
+
+  // Prevent navigation to other pages during save
+  useEffect(() => {
+    const handleRouteChange = (url: string) => {
+      if (isSavingToStorage) {
+        const confirmed = window.confirm(
+          'Your chat is still being saved to 0G Storage. ' +
+          'Leaving this page now may interrupt the save. Continue anyway?'
+        );
+        if (!confirmed) {
+          router.events.emit('routeChangeError');
+          throw 'Route change aborted by user';
+        }
+      }
+    };
+
+    router.events.on('routeChangeStart', handleRouteChange);
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChange);
+    };
+  }, [isSavingToStorage, router]);
+
   const models = [
     'gpt-4o-mini',
     'gpt-4o',
     'gpt-4.1-mini',
   ];
 
-  // Chat sessions from database
+  // Chat sessions from local JSON storage
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
 
-  // Fetch chat sessions for the connected wallet
+  // Fetch chat sessions for the connected wallet from JSON storage
+  // Each entry in JSON represents a conversation with its LATEST root hash
   const fetchChatSessions = async () => {
     if (!address) return;
     
@@ -96,7 +137,9 @@ const ChatPage = () => {
         throw new Error('Failed to fetch chat sessions');
       }
       const data = await res.json();
+      // These sessions contain the latest root hash for each conversation
       setConversations(data.sessions || []);
+      console.log(`Loaded ${data.sessions?.length || 0} chat sessions from JSON storage`);
     } catch (err) {
       console.error('Error fetching chat sessions:', err);
     } finally {
@@ -113,8 +156,67 @@ const ChatPage = () => {
     }
   }, [isConnected, address]);
 
+  // Auto-save to 0G storage after each message exchange
+  // This uploads the ENTIRE conversation to 0G and updates JSON with new root hash
+  const autoSaveToStorage = async (messagesToSave: Message[]) => {
+    if (!isConnected || !address || messagesToSave.length === 0) return;
+    
+    setIsSavingToStorage(true);
+    try {
+      // Convert all messages to the format expected by the API
+      const payloadMessages = messagesToSave.map((m) => ({
+        role: m.isUser ? 'user' : 'assistant',
+        content: m.text,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : new Date(m.timestamp).getTime(),
+      }));
+
+      // Upload entire conversation to 0G Storage
+      // If sessionId exists, this will UPDATE the JSON entry with new root hash
+      // If sessionId is null, this will CREATE a new JSON entry
+      const res = await fetch('/api/chat-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          messages: payloadMessages, 
+          filename: chatFilename,
+          walletAddress: address,
+          sessionId: activeConversation, // Pass session ID to update existing entry
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
+      
+      // Update active conversation ID if this is a new chat
+      if (!activeConversation && data.sessionId) {
+        setActiveConversation(data.sessionId);
+        console.log('New chat session created:', data.sessionId);
+      } else {
+        console.log('Updated existing session:', activeConversation, 'with new root hash:', data.rootHash);
+      }
+      
+      // Refresh the session list to show updated entry in sidebar
+      await fetchChatSessions();
+    } catch (err: any) {
+      console.error('Auto-save error:', err);
+      // Silently fail - don't interrupt user's chat experience
+    } finally {
+      setIsSavingToStorage(false);
+    }
+  };
+
   // Load messages from a saved chat session
+  // Uses the LATEST root hash from JSON to download full conversation from 0G
   const loadChatSession = async (session: Conversation) => {
+    // Check if currently saving - warn user
+    if (isSavingToStorage) {
+      const confirmed = window.confirm(
+        'Your current chat is still being saved to 0G Storage. ' +
+        'Loading another chat now may interrupt the save. Continue anyway?'
+      );
+      if (!confirmed) return;
+    }
+
     if (!session.rootHash) {
       console.error('No root hash available for this session');
       return;
@@ -122,6 +224,9 @@ const ChatPage = () => {
 
     setIsLoadingMessages(true);
     try {
+      console.log(`Loading chat session ${session._id} from 0G with root hash: ${session.rootHash}`);
+      
+      // Download the ENTIRE conversation from 0G using the latest root hash
       const res = await fetch(`/api/get-chat-messages?rootHash=${session.rootHash}`);
       if (!res.ok) {
         throw new Error('Failed to load chat messages');
@@ -140,9 +245,7 @@ const ChatPage = () => {
       setActiveConversation(session._id);
       setChatFilename(session.filename);
       
-      // Clear any previous save results
-      setChatSaveError('');
-      setChatSaveResult(null);
+      console.log(`Loaded ${loadedMessages.length} messages from 0G Storage`);
     } catch (err: any) {
       console.error('Error loading chat session:', err);
       setMessages([]);
@@ -153,11 +256,66 @@ const ChatPage = () => {
 
   // Start a new chat
   const startNewChat = () => {
+    // Check if currently saving - warn user
+    if (isSavingToStorage) {
+      const confirmed = window.confirm(
+        'Your current chat is still being saved to 0G Storage. ' +
+        'Starting a new chat now may interrupt the save. Continue anyway?'
+      );
+      if (!confirmed) return;
+    }
+
     setMessages([]);
     setActiveConversation(null);
-    setChatFilename('tee_chat.txt');
-    setChatSaveError('');
-    setChatSaveResult(null);
+    setChatFilename(`chat_${Date.now()}.txt`);
+  };
+
+  // Handle delete button click
+  const handleDeleteClick = (e: React.MouseEvent, chat: Conversation) => {
+    e.stopPropagation(); // Prevent loading the chat
+    setChatToDelete(chat);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm deletion
+  const confirmDelete = async () => {
+    if (!chatToDelete) return;
+
+    try {
+      const res = await fetch('/api/delete-chat-session', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: chatToDelete._id }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete chat session');
+      }
+
+      // If the deleted chat was active, clear the messages
+      if (activeConversation === chatToDelete._id) {
+        setMessages([]);
+        setActiveConversation(null);
+        setChatFilename(`chat_${Date.now()}.txt`);
+      }
+
+      // Refresh the chat list
+      await fetchChatSessions();
+      
+      console.log('Chat session deleted:', chatToDelete._id);
+    } catch (err) {
+      console.error('Error deleting chat session:', err);
+      alert('Failed to delete chat session. Please try again.');
+    } finally {
+      setShowDeleteModal(false);
+      setChatToDelete(null);
+    }
+  };
+
+  // Cancel deletion
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setChatToDelete(null);
   };
 
   const handleBuyBundle = async () => {
@@ -173,6 +331,12 @@ const ChatPage = () => {
   // Handle sending a message
   const handleSendMessage = async () => {
     if (!message.trim()) return;
+
+    // Check if currently saving - prevent new message
+    if (isSavingToStorage) {
+      alert('Please wait while your previous message is being saved to 0G Storage...');
+      return;
+    }
 
     // Add user message
     const userMessage: Message = {
@@ -234,7 +398,11 @@ const ChatPage = () => {
       const data = await resp.json();
       const text = data?.text || 'No response';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
-      setMessages(prev => [...prev, aiMessage]);
+      const updatedMessages = [...messages, userMessage, aiMessage];
+      setMessages(updatedMessages);
+      
+      // Auto-save to 0G storage after AI response
+      await autoSaveToStorage(updatedMessages);
     } catch (err: any) {
       setMessages(prev => prev.concat({ id: Date.now() + 1, text: `Error from model: ${err?.message || 'Unknown error'}`, isUser: false, timestamp: new Date() }));
     } finally {
@@ -242,49 +410,34 @@ const ChatPage = () => {
     }
   };
 
-  // Save transcript to 0G using /api/chat-session
-  const handleSaveTranscript = async () => {
-    if (!messages.length) return;
-    
-    // Check if wallet is connected
-    if (!isConnected || !address) {
-      setChatSaveError('Please connect your wallet to save transcripts');
-      return;
-    }
-    
-    setChatSaving(true);
-    setChatSaveError('');
-    setChatSaveResult(null);
-    try {
-      const payloadMessages = messages.map((m) => ({
-        role: m.isUser ? 'user' : 'assistant',
-        content: m.text,
-        timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : new Date(m.timestamp).getTime(),
-      }));
-      const res = await fetch('/api/chat-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: payloadMessages, 
-          filename: chatFilename,
-          walletAddress: address 
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
-      setChatSaveResult({ filename: data.filename, rootHash: data.rootHash, txHash: data.txHash });
-      
-      // Refetch chat sessions to update the sidebar
-      await fetchChatSessions();
-    } catch (err: any) {
-      setChatSaveError(err?.message || String(err));
-    } finally {
-      setChatSaving(false);
-    }
-  };
-
   return (
     <div className="relative flex h-screen font-inter">
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Chat?</h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete "{chatToDelete?.filename}"? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={cancelDelete}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <motion.div 
         className="fixed left-0 top-0 bg-white flex flex-col h-screen border-r border-gray-200"
@@ -325,16 +478,26 @@ const ChatPage = () => {
         {/* Navigation Links */}
         <div className="px-2 py-2">
           <nav className="flex flex-col gap-1">
-            <Link 
-              href="/"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                if (isSavingToStorage) {
+                  const confirmed = window.confirm(
+                    'Your chat is still being saved to 0G Storage. ' +
+                    'Leaving this page now may interrupt the save. Continue anyway?'
+                  );
+                  if (!confirmed) return;
+                }
+                router.push('/');
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors text-left w-full"
               title={!isOpen ? "Home" : ""}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
               </svg>
               {isOpen && <span>Home</span>}
-            </Link>
+            </button>
             <Link 
               href="/chat"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm bg-gradient-to-r from-violet-400 to-violet-400 text-white transition-colors"
@@ -345,16 +508,26 @@ const ChatPage = () => {
               </svg>
               {isOpen && <span>Chat</span>}
             </Link>
-            <Link 
-              href="/models"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors"
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                if (isSavingToStorage) {
+                  const confirmed = window.confirm(
+                    'Your chat is still being saved to 0G Storage. ' +
+                    'Leaving this page now may interrupt the save. Continue anyway?'
+                  );
+                  if (!confirmed) return;
+                }
+                router.push('/models');
+              }}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors text-left w-full"
               title={!isOpen ? "Models" : ""}
             >
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
               {isOpen && <span>Models</span>}
-            </Link>
+            </button>
 
           </nav>
         </div>
@@ -401,29 +574,46 @@ const ChatPage = () => {
               )
             ) : conversations.length > 0 ? (
               conversations.map((chat) => (
-                <button
-                  key={chat._id}
-                  onClick={() => loadChatSession(chat)}
-                  disabled={isLoadingMessages}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
-                    activeConversation === chat._id
-                      ? 'bg-violet-100 text-violet-900'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  } disabled:opacity-50`}
-                  title={!isOpen ? chat.filename : ""}
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                  {isOpen && (
-                    <div className="flex-1 min-w-0">
-                      <div className="truncate font-medium">{chat.filename}</div>
-                      <div className="text-xs text-gray-500 truncate">
-                        {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
+                <div key={chat._id} className="relative group">
+                  <button
+                    onClick={() => loadChatSession(chat)}
+                    disabled={isLoadingMessages}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
+                      activeConversation === chat._id
+                        ? 'bg-violet-100 text-violet-900'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    } disabled:opacity-50`}
+                    title={!isOpen ? chat.filename : ""}
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                    {isOpen && (
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate font-medium">
+                          {chat.preview 
+                            ? (chat.preview.length > 40 ? chat.preview.substring(0, 40) + '...' : chat.preview)
+                            : chat.filename
+                          }
+                        </div>
+                        <div className="text-xs text-gray-500 truncate">
+                          {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
+                        </div>
                       </div>
-                    </div>
+                    )}
+                  </button>
+                  {isOpen && (
+                    <button
+                      onClick={(e) => handleDeleteClick(e, chat)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete chat"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   )}
-                </button>
+                </div>
               ))
             ) : (
               isOpen && !isLoadingSessions && (
@@ -621,40 +811,22 @@ const ChatPage = () => {
                   </button>
                 </div>
 
-                {/* Save Transcript Controls */}
-                <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                  <div className="flex-1 flex items-center gap-2">
-                    <label className="text-xs text-gray-600 whitespace-nowrap">Save as</label>
-                    <input
-                      type="text"
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-md text-sm"
-                      value={chatFilename}
-                      onChange={(e) => setChatFilename(e.target.value)}
-                      placeholder="tee_chat.txt"
-                    />
+                {/* Auto-save indicator */}
+                {isSavingToStorage && (
+                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Saving to 0G Storage...</span>
                   </div>
-                  <button
-                    onClick={handleSaveTranscript}
-                    disabled={chatSaving || messages.length === 0 || !isConnected}
-                    className="px-4 py-2 rounded-md bg-black text-white disabled:opacity-60 text-sm"
-                    title={
-                      !isConnected ? 'Connect wallet to save' :
-                      messages.length === 0 ? 'No messages to save' : 
-                      'Save chat transcript to 0G storage and MongoDB'
-                    }
-                  >
-                    {chatSaving ? 'Saving…' : 'Save Transcript'}
-                  </button>
-                </div>
-
-                {chatSaveError && (
-                  <div className="mt-2 text-xs text-red-600">Error: {chatSaveError}</div>
                 )}
-                {chatSaveResult && (
-                  <div className="mt-2 text-xs text-gray-700 break-all">
-                    <div><span className="font-medium">Saved Filename:</span> {chatSaveResult.filename}</div>
-                    <div><span className="font-medium">Root Hash:</span> {String(chatSaveResult.rootHash ?? '')}</div>
-                    <div><span className="font-medium">Tx Hash:</span> {chatSaveResult.txHash}</div>
+                {!isSavingToStorage && messages.length > 0 && isConnected && (
+                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span>Auto-saved to 0G Storage</span>
                   </div>
                 )}
               </div>
