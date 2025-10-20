@@ -1,0 +1,37 @@
+{
+  "name": "inft-oracle-backend",
+  "version": "1.0.0",
+  "description": "INFT Oracle Backend Service for 0G Network",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "dev": "nodemon --watch . --ext ts --exec ts-node index.ts",
+    "build": "tsc",
+    "serve": "node dist/index.js"
+  },
+  "keywords": ["INFT", "0G", "Oracle", "AI", "NFT"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@0glabs/0g-ts-sdk": "^0.2.1",
+    "axios": "^1.7.2",
+    "better-sse": "^0.13.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.3.1",
+    "opossum": "^8.1.4"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.8",
+    "@types/opossum": "^8.1.4",
+    "nodemon": "^3.1.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.2"
+  }
+}
+
+

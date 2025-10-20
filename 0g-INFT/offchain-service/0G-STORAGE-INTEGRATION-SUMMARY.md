@@ -92,9 +92,9 @@ curl -X POST http://localhost:3000/infer \
 ## 🔧 **Current System Architecture**
 
 ### **Smart Contracts (0G Galileo Testnet)**
-- **INFT Contract:** `0xF170237160314f5D8526f981b251b56e25347Ed9`
-- **Oracle Contract:** `0x567e70a52AB420c525D277b0020260a727A735dB`
-- **Data Verifier:** `0x9C3FFe10e61B1750F61D2E0A64c6bBE8984BA268`
+- **INFT Contract:** `0xB28dce039dDf7BC39aDE96984c8349DD5C6EcDC1`
+- **Oracle Contract:** `0xc40DC9a5C20A758e2b0659b4CB739a25C2E3723d`
+- **Data Verifier:** `0xeD427A28Ffbd551178e12ab47cDccCc0ea9AE478`
 
 ### **Storage Layer**
 - **0G Storage Network:** Primary storage (when available)
@@ -144,8 +144,8 @@ ZG_STORAGE_INDEXER=https://indexer-storage-testnet-turbo.0g.ai
 STORAGE_ROOT_HASH=0xe3bf3e775364d9eb24fe11106ad035bebda6c2b0f2b0586ad4397246c864aedc
 
 # Contract Addresses
-INFT_CONTRACT_ADDRESS=0xF170237160314f5D8526f981b251b56e25347Ed9
-ORACLE_CONTRACT_ADDRESS=0x567e70a52AB420c525D277b0020260a727A735dB
+INFT_CONTRACT_ADDRESS=0xB28dce039dDf7BC39aDE96984c8349DD5C6EcDC1
+ORACLE_CONTRACT_ADDRESS=0xc40DC9a5C20A758e2b0659b4CB739a25C2E3723d
 
 # Network Configuration
 GALILEO_RPC_URL=https://evmrpc-testnet.0g.ai
