@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { useAccount, useConnect, useDisconnect, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useReadContract } from 'wagmi'
+import { useMintINFT, useAuthorizeINFT, CONTRACT_ADDRESSES, INFT_ABI } from '../hooks/useINFT'
+import { useInference, useStreamingInference } from '../hooks/useInference'
 
 // 0G Network Configuration
 const ZERO_G_NETWORK = {
@@ -23,96 +25,17 @@ const ZERO_G_NETWORK = {
   },
 }
 
-// Contract Addresses - Updated deployment on Galileo Chain ID 16602
-const CONTRACT_ADDRESSES = {
-  INFT: '0xB28dce039dDf7BC39aDE96984c8349DD5C6EcDC1',
-  DATA_VERIFIER: '0xeD427A28Ffbd551178e12ab47cDccCc0ea9AE478',
-  ORACLE_STUB: '0xc40DC9a5C20A758e2b0659b4CB739a25C2E3723d',
-}
-
-// Backend service URL
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'
-
-// INFT Contract ABI
-const INFT_ABI = [
-  {
-    "inputs": [
-      {"internalType": "address", "name": "to", "type": "address"},
-      {"internalType": "string", "name": "_encryptedURI", "type": "string"},
-      {"internalType": "bytes32", "name": "_metadataHash", "type": "bytes32"}
-    ],
-    "name": "mint",
-    "outputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
-      {"internalType": "address", "name": "user", "type": "address"}
-    ],
-    "name": "authorizeUsage",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
-      {"internalType": "address", "name": "user", "type": "address"}
-    ],
-    "name": "revokeUsage",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
-      {"internalType": "address", "name": "user", "type": "address"}
-    ],
-    "name": "isAuthorized",
-    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-    "name": "ownerOf",
-    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
-    "name": "balanceOf",
-    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getCurrentTokenId",
-    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-    "name": "encryptedURI",
-    "outputs": [{"internalType": "string", "name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-]
-
 export default function INFTPage() {
   const [mounted, setMounted] = useState(false)
   const { address, isConnected, chain } = useAccount()
   const { connect, connectors } = useConnect()
   const { disconnect } = useDisconnect()
-  const { writeContract, data: hash, isPending: isWritePending } = useWriteContract()
-  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  
+  // Use custom hooks
+  const { mint, isPending: isMintPending, isConfirming: isMintConfirming, isConfirmed: isMintConfirmed, error: mintError } = useMintINFT()
+  const { authorize, isPending: isAuthPending, isConfirming: isAuthConfirming, isConfirmed: isAuthConfirmed, error: authError } = useAuthorizeINFT()
+  const { infer, result: inferenceResult, isInferring, error: inferenceError } = useInference()
+  const { streamInfer, tokens: streamingTokens, isStreaming, error: streamError } = useStreamingInference()
 
   // Form states
   const [mintForm, setMintForm] = useState({
@@ -132,11 +55,6 @@ export default function INFTPage() {
   })
 
   // State management
-  const [inferenceResult, setInferenceResult] = useState<any>(null)
-  const [isInferring, setIsInferring] = useState(false)
-  const [inferenceError, setInferenceError] = useState<string | null>(null)
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [streamingTokens, setStreamingTokens] = useState<string[]>([])
   const [ownedTokens, setOwnedTokens] = useState<number[]>([])
 
   // Read contract data
@@ -226,41 +144,17 @@ export default function INFTPage() {
 
   const handleMint = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!mintForm.recipient || !mintForm.encryptedURI || !mintForm.metadataHash) {
-      alert('Please fill all fields')
-      return
-    }
-    
-    try {
-      await writeContract({
-        address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
-        abi: INFT_ABI,
-        functionName: 'mint',
-        args: [mintForm.recipient as `0x${string}`, mintForm.encryptedURI, mintForm.metadataHash as `0x${string}`],
-      })
-    } catch (error: any) {
-      console.error('Mint failed:', error)
-      alert('Mint failed: ' + (error?.message || 'Unknown error'))
+    const success = await mint(mintForm.recipient, mintForm.encryptedURI, mintForm.metadataHash)
+    if (!success && mintError) {
+      alert('Mint failed: ' + mintError)
     }
   }
 
   const handleAuthorize = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!authorizeForm.tokenId || !authorizeForm.userAddress) {
-      alert('Please fill all fields')
-      return
-    }
-    
-    try {
-      await writeContract({
-        address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
-        abi: INFT_ABI,
-        functionName: 'authorizeUsage',
-        args: [BigInt(authorizeForm.tokenId), authorizeForm.userAddress as `0x${string}`],
-      })
-    } catch (error: any) {
-      console.error('Authorize failed:', error)
-      alert('Authorize failed: ' + (error?.message || 'Unknown error'))
+    const success = await authorize(authorizeForm.tokenId, authorizeForm.userAddress)
+    if (!success && authError) {
+      alert('Authorize failed: ' + authError)
     }
   }
 
@@ -271,37 +165,10 @@ export default function INFTPage() {
       return
     }
     
-    setIsInferring(true)
-    setInferenceError(null)
-    setInferenceResult(null)
-    
     try {
-      const response = await fetch(`${BACKEND_URL}/infer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tokenId: parseInt(inferForm.tokenId),
-          input: inferForm.input,
-          user: address,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`)
-      }
-
-      const result = await response.json()
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Inference failed')
-      }
-
-      setInferenceResult(result)
+      await infer(parseInt(inferForm.tokenId), inferForm.input, address)
     } catch (error: any) {
       console.error('Inference error:', error)
-      setInferenceError(error.message)
-    } finally {
-      setIsInferring(false)
     }
   }
 
@@ -311,77 +178,10 @@ export default function INFTPage() {
       return
     }
     
-    setIsStreaming(true)
-    setInferenceError(null)
-    setStreamingTokens([])
-    
     try {
-      const response = await fetch(`${BACKEND_URL}/infer/stream`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'text/event-stream',
-        },
-        body: JSON.stringify({
-          tokenId: parseInt(inferForm.tokenId),
-          input: inferForm.input,
-          user: address,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      if (!response.body) {
-        throw new Error('Response body is null')
-      }
-
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        
-        buffer += decoder.decode(value, { stream: true })
-        const events = buffer.split(/\r?\n\r?\n/)
-        buffer = events.pop() || ''
-
-        events.forEach(eventData => {
-          const trimmed = eventData.trim()
-          if (!trimmed) return
-          
-          const lines = trimmed.split('\n')
-          let eventType = 'message'
-          let data = ''
-          
-          lines.forEach(line => {
-            if (line.startsWith('event:')) {
-              eventType = line.slice(6).trim()
-            } else if (line.startsWith('data:')) {
-              data = line.slice(5).trim()
-            }
-          })
-          
-          if (data) {
-            try {
-              const parsed = JSON.parse(data)
-              if (eventType === 'token' && parsed.content) {
-                setStreamingTokens(prev => [...prev, parsed.content])
-              }
-            } catch (e) {
-              console.error('Parse error:', e)
-            }
-          }
-        })
-      }
+      await streamInfer(parseInt(inferForm.tokenId), inferForm.input, address)
     } catch (error: any) {
       console.error('Streaming error:', error)
-      setInferenceError(error.message)
-    } finally {
-      setIsStreaming(false)
     }
   }
 
@@ -482,14 +282,17 @@ export default function INFTPage() {
                 
                 <button
                   type="submit"
-                  disabled={isWritePending || isConfirming}
+                  disabled={isMintPending || isMintConfirming}
                   style={{ width: '100%', padding: '10px' }}
                 >
-                  {isWritePending || isConfirming ? 'Processing...' : 'Mint INFT'}
+                  {isMintPending || isMintConfirming ? 'Processing...' : 'Mint INFT'}
                 </button>
                 
-                {isConfirmed && (
+                {isMintConfirmed && (
                   <p style={{ color: 'green', marginTop: '10px' }}>Successfully minted!</p>
+                )}
+                {mintError && (
+                  <p style={{ color: 'red', marginTop: '10px' }}>{mintError}</p>
                 )}
               </form>
             </div>
@@ -523,14 +326,17 @@ export default function INFTPage() {
                 
                 <button
                   type="submit"
-                  disabled={isWritePending || isConfirming}
+                  disabled={isAuthPending || isAuthConfirming}
                   style={{ width: '100%', padding: '10px' }}
                 >
-                  {isWritePending || isConfirming ? 'Processing...' : 'Authorize User'}
+                  {isAuthPending || isAuthConfirming ? 'Processing...' : 'Authorize User'}
                 </button>
                 
-                {isConfirmed && (
+                {isAuthConfirmed && (
                   <p style={{ color: 'green', marginTop: '10px' }}>Authorization successful!</p>
+                )}
+                {authError && (
+                  <p style={{ color: 'red', marginTop: '10px' }}>{authError}</p>
                 )}
               </form>
             </div>
@@ -614,6 +420,12 @@ export default function INFTPage() {
                     <span>{streamingTokens.length} tokens</span>
                   </div>
                   <p>{streamingTokens.join('')}</p>
+                </div>
+              )}
+              
+              {streamError && (
+                <div style={{ marginTop: '10px', padding: '10px', border: '1px solid red', color: 'red' }}>
+                  {streamError}
                 </div>
               )}
             </form>

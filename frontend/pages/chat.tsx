@@ -14,6 +14,8 @@ import {
   useBuyCredits,
   useUsePrompt,
 } from '@/lib/contracts/creditUse';
+import { useInference } from '../hooks/useInference';
+import { useCheckINFTAuthorization } from '../hooks/useINFT';
 
 interface Conversation {
   _id: string;
@@ -62,6 +64,15 @@ const ChatPage = () => {
   const { data: bundlePrice } = useCheckBundlePrice();
   const { buyCredits, isWriting: isBuying, isConfirmed: isBuyConfirmed, resetWrite: resetBuy } = useBuyCredits();
   const { usePrompt, isWriting: isUsingPrompt, resetWrite: resetUsePrompt, isConfirming, isConfirmed } = useUsePrompt();
+  
+  // INFT inference hook
+  const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
+  
+  // Check if user has INFT authorization
+  const { isAuthorized: hasINFT, refetch: refetchINFT } = useCheckINFTAuthorization(1, address);
+  
+  // Toggle for using INFT vs token-based inference
+  const [useINFTInference, setUseINFTInference] = useState(true);
 
   // Track latest confirmation state to avoid stale closures while waiting
   const isConfirmedRef = useRef<boolean>(false);
@@ -74,6 +85,13 @@ const ChatPage = () => {
       refetchMyCredits?.();
     }
   }, [isBuyConfirmed, refetchMyCredits]);
+  
+  // Refetch INFT status when address changes
+  useEffect(() => {
+    if (address) {
+      refetchINFT?.();
+    }
+  }, [address, refetchINFT]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -355,56 +373,71 @@ const ChatPage = () => {
       return;
     }
 
-    try {
-      resetUsePrompt();
-      // User signs/submits the tx
-      // Compute token usage for this user message (OpenAI-style tokenizer)
-      const tokenIds = encode(message);
-      const tokensUsed = BigInt(tokenIds.length);
-      await usePrompt(0n, tokensUsed);
-      // Wait until the transaction is actually confirmed on-chain before proceeding
-      const waitForConfirmation = async (timeoutMs = 120000) => {
-        const start = Date.now();
-        while (!isConfirmedRef.current) {
-          if (Date.now() - start > timeoutMs) {
-            throw new Error('Timed out waiting for on-chain confirmation');
+    // Only deduct tokens if user doesn't have INFT authorization OR user chose not to use INFT
+    if (!hasINFT || !useINFTInference) {
+      try {
+        resetUsePrompt();
+        // User signs/submits the tx
+        // Compute token usage for this user message (OpenAI-style tokenizer)
+        const tokenIds = encode(message);
+        const tokensUsed = BigInt(tokenIds.length);
+        await usePrompt(0n, tokensUsed);
+        // Wait until the transaction is actually confirmed on-chain before proceeding
+        const waitForConfirmation = async (timeoutMs = 120000) => {
+          const start = Date.now();
+          while (!isConfirmedRef.current) {
+            if (Date.now() - start > timeoutMs) {
+              throw new Error('Timed out waiting for on-chain confirmation');
+            }
+            await new Promise((r) => setTimeout(r, 500));
           }
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      };
+        };
 
-      await waitForConfirmation();
-      // Refresh credits after confirmation
-      refetchMyCredits?.();
-    } catch (e: any) {
-      const errMsg = e?.message || 'Transaction was rejected or failed. No credits consumed.';
-      setMessages(prev => prev.concat({ id: Date.now() + 1, text: errMsg, isUser: false, timestamp: new Date() }));
-      return;
+        await waitForConfirmation();
+        // Refresh credits after confirmation
+        refetchMyCredits?.();
+      } catch (e: any) {
+        const errMsg = e?.message || 'Transaction was rejected or failed. No credits consumed.';
+        setMessages(prev => prev.concat({ id: Date.now() + 1, text: errMsg, isUser: false, timestamp: new Date() }));
+        return;
+      }
+    } else {
+      console.log('User has INFT authorization and chose to use it - skipping token deduction');
     }
 
-    // After signing/submitting the tx, call the OpenAI API and return the response
+    // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      const history = messages.concat(userMessage).map((m) => ({ role: m.isUser ? 'user' : 'assistant', content: m.text }));
-      const resp = await fetch('/api/chat-openai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, model: selectedModel }),
-      });
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(errText || 'OpenAI request failed');
-      }
-      const data = await resp.json();
-      const text = data?.text || 'No response';
+      // Use INFT inference instead of OpenAI
+      // Token ID 1 is assumed - in production, track the user's INFT token
+      const tokenId = 1;
+      
+      const inferenceResult = await runINFTInference(tokenId, message, address);
+      
+      const text = inferenceResult?.output || 'No response from INFT';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
       const updatedMessages = [...messages, userMessage, aiMessage];
       setMessages(updatedMessages);
       
+      // Log inference metadata
+      if (inferenceResult?.metadata) {
+        console.log('INFT Inference:', {
+          provider: inferenceResult.metadata.provider,
+          model: inferenceResult.metadata.model,
+          proofHash: inferenceResult.metadata.proofHash
+        });
+      }
+      
       // Auto-save to 0G storage after AI response
       await autoSaveToStorage(updatedMessages);
     } catch (err: any) {
-      setMessages(prev => prev.concat({ id: Date.now() + 1, text: `Error from model: ${err?.message || 'Unknown error'}`, isUser: false, timestamp: new Date() }));
+      console.error('INFT Inference error:', err);
+      setMessages(prev => prev.concat({ 
+        id: Date.now() + 1, 
+        text: `Error from INFT: ${err?.message || 'Unknown error'}. Please ensure you are authorized for the INFT token.`, 
+        isUser: false, 
+        timestamp: new Date() 
+      }));
     } finally {
       setIsGenerating(false);
     }
@@ -532,19 +565,42 @@ const ChatPage = () => {
           </nav>
         </div>
 
-        {/* Tokens + Buy */}
+        {/* Tokens + Buy / INFT Status */}
         {isOpen && (
           <div className="px-4 py-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-violet-200 to-violet-200 text-black rounded-full text-sm">
-              <span>Tokens: {myCredits?.toString?.() ?? '-'}</span>
-              <button
-                onClick={handleBuyBundle}
-                disabled={!isConnected || !bundlePrice || isBuying}
-                className="ml-2 px-2 py-0.5 bg-violet-500 text-white rounded-full hover:bg-violet-600 disabled:opacity-50"
-                title="Buy 1 bundle"
-              >
-                {isBuying ? 'Buying…' : 'Buy'}
-              </button>
+            <div className="flex flex-col gap-2">
+              {/* Token Display */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-violet-200 to-violet-200 text-black rounded-full text-sm">
+                <span>Tokens: {myCredits?.toString?.() ?? '-'}</span>
+                <button
+                  onClick={handleBuyBundle}
+                  disabled={!isConnected || !bundlePrice || isBuying}
+                  className="ml-2 px-2 py-0.5 bg-violet-500 text-white rounded-full hover:bg-violet-600 disabled:opacity-50"
+                  title="Buy 1 bundle"
+                >
+                  {isBuying ? 'Buying…' : 'Buy'}
+                </button>
+              </div>
+              
+              {/* INFT Toggle - Only show if user has INFT */}
+              {hasINFT && isConnected && (
+                <label className="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg text-xs cursor-pointer hover:bg-green-100 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={useINFTInference}
+                    onChange={(e) => setUseINFTInference(e.target.checked)}
+                    className="w-4 h-4 text-green-600 bg-white border-green-300 rounded focus:ring-green-500 focus:ring-2 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5 flex-shrink-0 text-green-700" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span className="font-medium text-green-800">
+                      {useINFTInference ? 'Using INFT (No tokens)' : 'Use INFT Inference'}
+                    </span>
+                  </div>
+                </label>
+              )}
             </div>
           </div>
         )}
@@ -801,13 +857,24 @@ const ChatPage = () => {
                   {/* Send Icon */}
                   <button 
                     onClick={handleSendMessage}
-                    className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors"
-                    disabled={isUsingPrompt}
-                    title={isUsingPrompt ? 'Waiting for transaction…' : 'Send'}
+                    className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                    disabled={isUsingPrompt || isGenerating || isINFTInferring}
+                    title={
+                      isUsingPrompt ? 'Waiting for transaction…' : 
+                      isINFTInferring || isGenerating ? 'INFT is processing...' : 
+                      'Send'
+                    }
                   >
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
+                    {isINFTInferring || isGenerating ? (
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                    )}
                   </button>
                 </div>
 
