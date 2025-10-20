@@ -193,8 +193,8 @@ class INFTOffChainService {
    */
   private initializeBlockchain(): void {
     const rpcUrl = process.env.GALILEO_RPC_URL || 'https://evmrpc-testnet.0g.ai';
-    const inftAddress = process.env.INFT_CONTRACT_ADDRESS || '0x18db2ED477A25Aac615D803aE7be1d3598cdfF95';
-    const oracleAddress = process.env.ORACLE_CONTRACT_ADDRESS || '0x567e70a52AB420c525D277b0020260a727A735dB';
+    const inftAddress = process.env.INFT_CONTRACT_ADDRESS || '0xB28dce039dDf7BC39aDE96984c8349DD5C6EcDC1';
+    const oracleAddress = process.env.ORACLE_CONTRACT_ADDRESS || '0xc40DC9a5C20A758e2b0659b4CB739a25C2E3723d';
 
     this.provider = new JsonRpcProvider(rpcUrl);
     this.inftContract = new Contract(inftAddress, INFT_ABI, this.provider);
@@ -268,16 +268,34 @@ class INFTOffChainService {
 
     this.llmCircuitBreaker = new CircuitBreaker(this.callLLMDirect.bind(this), circuitBreakerOptions);
     
-    // Add fallback for circuit breaker
-    this.llmCircuitBreaker.fallback(() => {
+    // Add fallback for circuit breaker - use gpt-5-nano as backup
+    this.llmCircuitBreaker.fallback(async (prompt: string) => {
       this.logStructured({
         requestId: 'circuit-fallback',
         tokenId: 0,
         userAddress: 'system',
         step: 'llm_circuit_fallback',
-        error: 'Circuit breaker fallback triggered'
+        error: 'Circuit breaker fallback triggered - using gpt-5-nano'
       });
-      throw new Error('LLM_CIRCUIT_OPEN: Circuit breaker is open, failing fast');
+      
+      try {
+        // Call fallback model directly
+        console.log('🔄 Attempting fallback LLM call...');
+        const result = await this.callFallbackLLM(prompt);
+        console.log('✅ Fallback LLM call succeeded');
+        return result;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error('❌ Fallback LLM error:', errorMessage);
+        this.logStructured({
+          requestId: 'circuit-fallback-error',
+          tokenId: 0,
+          userAddress: 'system',
+          step: 'llm_circuit_fallback_failed',
+          error: `Fallback model failed: ${errorMessage}`
+        });
+        throw new Error(`LLM_CIRCUIT_OPEN: Circuit breaker is open and fallback model failed: ${errorMessage}`);
+      }
     });
 
     // Circuit breaker event listeners for monitoring
@@ -1192,7 +1210,7 @@ Response:`;
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
+            'Authorization': this.llmConfig.apiKey,
             'Accept': 'application/json'
           }
         }
@@ -1230,6 +1248,78 @@ Response:`;
   }
 
   /**
+   * Fallback LLM API call using gpt-5-nano when circuit breaker is open
+   */
+  private async callFallbackLLM(prompt: string): Promise<string> {
+    const requestPayload = {
+      model: 'openai/gpt-5-nano',
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      stream: false,
+      // gpt-5-nano only supports temperature=1 (default), so we omit it
+      // gpt-5-nano is a reasoning model that uses tokens for internal reasoning + output
+      // We need much more tokens to allow for both reasoning and actual response
+      max_completion_tokens: 1024  // Increased from 256 to allow for reasoning + output
+    };
+
+    console.log(`🔄 Using fallback model: gpt-5-nano`);
+    
+    try {
+      const response: AxiosResponse<OpenAIChatResponse> = await axios.post(
+        `${this.llmConfig.host}/v1/chat/completions`,
+        requestPayload,
+        {
+          timeout: this.llmConfig.requestTimeoutMs,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': this.llmConfig.apiKey,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      // Debug: Log the response structure
+      console.log('🔍 Fallback API Response:', JSON.stringify(response.data, null, 2));
+
+      if (!response.data || !response.data.choices || response.data.choices.length === 0) {
+        throw new Error('Invalid response from RedPill API (fallback)');
+      }
+
+      const choice = response.data.choices[0];
+      console.log('🔍 Choice object:', JSON.stringify(choice, null, 2));
+      
+      if (!choice.message || !choice.message.content) {
+        console.error('❌ Missing content. Choice:', choice);
+        throw new Error('No content in RedPill API response (fallback)');
+      }
+
+      console.log(`✅ Fallback LLM response received (${choice.message.content.length} chars)`);
+      return choice.message.content.trim();
+      
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          throw new Error('Invalid RedPill API key (fallback). Please check your REDPILL_API_KEY environment variable.');
+        } else if (error.response?.status === 429) {
+          throw new Error('RedPill API rate limit exceeded (fallback). Please try again later.');
+        } else if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Cannot connect to RedPill API at ${this.llmConfig.host} (fallback). Please check your internet connection.`);
+        } else if (error.code === 'ECONNABORTED') {
+          throw new Error(`Fallback LLM request timeout after ${this.llmConfig.requestTimeoutMs}ms`);
+        } else {
+          const errorMsg = error.response?.data?.error?.message || error.message;
+          throw new Error(`RedPill API error (fallback): ${errorMsg}`);
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Streaming LLM API call for Server-Sent Events (Phase 4) - OpenAI-compatible RedPill API
    */
   private async callLLMDirectStreaming(prompt: string, session: any): Promise<void> {
@@ -1256,7 +1346,7 @@ Response:`;
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
+            'Authorization': this.llmConfig.apiKey,
             'Accept': 'text/event-stream'
           },
           responseType: 'stream'
