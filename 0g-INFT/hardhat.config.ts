@@ -29,6 +29,13 @@ const config: HardhatUserConfig = {
       chainId: 16602,
       gasPrice: "auto",
     },
+    // 0G Mainnet
+    mainnet: {
+      url: process.env.MAINNET_RPC_URL || "https://evmrpc.0g.ai",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 16661,
+      gasPrice: "auto",
+    },
     // For local development
     hardhat: {
       chainId: 31337,

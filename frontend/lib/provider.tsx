@@ -1,37 +1,20 @@
 import '@rainbow-me/rainbowkit/styles.css';
 import React, { PropsWithChildren } from 'react';
-import { getDefaultConfig, RainbowKitProvider, type Chain } from '@rainbow-me/rainbowkit';
+import { getDefaultConfig, RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
-import {
-  mainnet,
-  polygon,
-  optimism,
-  arbitrum,
-  base,
-} from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-
-// Define custom chains with proper typing
-const galileo = {
-  id: 16602,
-  name: '0G-Galileo-Testnet',
-  iconUrl: '/0g.webp',
-  iconBackground: '#fff',
-  nativeCurrency: { name: '0G', symbol: 'OG', decimals: 18 },
-  rpcUrls: {
-    default: { http: ['https://evmrpc-testnet.0g.ai/'] },
-  },
-  blockExplorers: {
-    default: { name: '0G-Galileo-Testnet', url: 'https://chainscan-galileo.0g.ai' },
-  },
-} as const satisfies Chain;
+import { galileoTestnet, zgMainnet, getCurrentChain, NETWORK_TYPE } from './networkConfig';
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? 'YOUR_PROJECT_ID';
 
+// Get the current chain based on environment configuration
+const currentChain = getCurrentChain();
+
+// Configure wagmi with the appropriate chain
 const config = getDefaultConfig({
-  appName: 'My RainbowKit App',
+  appName: 'TeeTee - 0G Decentralized AI',
   projectId,
-  chains: [galileo],
+  chains: [currentChain],
   ssr: true, // If your dApp uses server side rendering (SSR)
 });
 
@@ -48,5 +31,11 @@ export function Providers({ children }: PropsWithChildren) {
     </WagmiProvider>
   );
 }
+
+// Export network info for debugging
+export const networkInfo = {
+  current: NETWORK_TYPE,
+  chain: currentChain,
+};
 
 export default Providers;
