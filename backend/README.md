@@ -2,6 +2,14 @@
 
 Oracle backend service for Intelligent NFTs (INFT) on 0G Network. This service validates on-chain authorizations, fetches encrypted data from 0G Storage, and performs AI inference using LLM APIs.
 
+## 🌐 Network Configuration
+
+> **⚠️ IMPORTANT**: This backend uses a **unified network configuration** with the frontend.
+> 
+> See **[NETWORK_CONFIG.md](../NETWORK_CONFIG.md)** in the project root for complete setup instructions.
+> 
+> To switch between testnet/mainnet, simply change `NEXT_PUBLIC_NETWORK_TYPE` in the root `.env` file - both frontend and backend will switch together! 🔄
+
 ## 🚀 Features
 
 - ✅ **On-chain Authorization**: Validates ERC-7857 INFT usage permissions
@@ -11,6 +19,7 @@ Oracle backend service for Intelligent NFTs (INFT) on 0G Network. This service v
 - ✅ **Oracle Proofs**: Generates cryptographic proofs for inference results
 - ✅ **Rate Limiting**: 30 requests per minute per IP
 - ✅ **Security**: Input sanitization and validation
+- ✅ **Multi-Network**: Seamless switching between testnet and mainnet
 
 ## 📋 Prerequisites
 
@@ -27,15 +36,21 @@ Oracle backend service for Intelligent NFTs (INFT) on 0G Network. This service v
    npm install
    ```
 
-2. **Configure environment:**
+2. **Configure shared environment:**
+   
+   The backend shares configuration with the frontend via a root `.env` file.
+   
    ```bash
+   # From project root (TeeTee-v2/)
    cp .env.example .env
    ```
 
-3. **Edit `.env` file:**
+3. **Edit root `.env` file:**
+   - Set `NEXT_PUBLIC_NETWORK_TYPE=testnet` or `mainnet`
    - Add your `REDPILL_API_KEY`
-   - Update contract addresses if needed
-   - Configure other settings as required
+   - For mainnet, configure `NEXT_PUBLIC_MAINNET_*_ADDRESS` variables
+   
+   **📖 See [NETWORK_CONFIG.md](../NETWORK_CONFIG.md) for detailed setup guide**
 
 ## 🏃 Running the Service
 

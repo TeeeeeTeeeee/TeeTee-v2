@@ -1,15 +1,19 @@
 /**
  * Network Configuration for 0G Blockchain
  * Supports both Testnet (Galileo) and Mainnet
+ * 
+ * 🎯 TO SWITCH NETWORKS:
+ * Change NETWORK_TYPE in both:
+ * - frontend/lib/networkConfig.ts (this file)
+ * - backend/networkConfig.ts
  */
 
 import type { Chain } from '@rainbow-me/rainbowkit';
 
 export type NetworkType = 'testnet' | 'mainnet';
 
-// Get network type from environment variable (defaults to testnet)
-export const NETWORK_TYPE: NetworkType = 
-  (process.env.NEXT_PUBLIC_NETWORK_TYPE as NetworkType) || 'testnet';
+// 🎯 CHANGE THIS TO SWITCH NETWORKS (must match backend/networkConfig.ts)
+export const NETWORK_TYPE: NetworkType = 'testnet' as NetworkType;
 
 // 0G Galileo Testnet Configuration
 export const galileoTestnet = {
@@ -92,7 +96,7 @@ export const getNetworkInfo = () => {
     chainId: chain.id,
     name: chain.name,
     rpcUrl: chain.rpcUrls.default.http[0],
-    blockExplorer: chain.blockExplorers.default.url,
+    blockExplorer: chain.blockExplorers?.default.url || '',
     storageIndexer: getCurrentStorageIndexer(),
     isMainnet: NETWORK_TYPE === 'mainnet',
     isTestnet: NETWORK_TYPE === 'testnet',
