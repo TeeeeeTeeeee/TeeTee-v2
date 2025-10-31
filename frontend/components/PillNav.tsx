@@ -11,7 +11,7 @@ export type PillNavItem = {
 };
 
 export interface PillNavProps {
-  logo: string;
+  logo?: string;
   logoAlt?: string;
   items: PillNavItem[];
   activeHref?: string;
@@ -25,6 +25,9 @@ export interface PillNavProps {
   onMobileMenuClick?: () => void;
   initialLoadAnimation?: boolean;
   renderWalletButton?: () => React.ReactNode;
+  leftOffset?: string; // For accounting for sidebar or other left-side elements
+  maxWidth?: string; // Maximum width of the navbar content (e.g., "1200px", "80%")
+  align?: 'left' | 'center' | 'right'; // Horizontal alignment of navbar content
 }
 
 const PillNav: React.FC<PillNavProps> = ({
@@ -42,6 +45,9 @@ const PillNav: React.FC<PillNavProps> = ({
   onMobileMenuClick,
   initialLoadAnimation = true,
   renderWalletButton,
+  leftOffset = "0px",
+  maxWidth = "80rem", // Default to 7xl (80rem / 1280px)
+  align = "center",
 }) => {
   const resolvedPillTextColor = pillTextColor ?? baseColor;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -267,69 +273,89 @@ const PillNav: React.FC<PillNavProps> = ({
   } as React.CSSProperties;
 
   return (
-    <div className="fixed top-0 left-0 z-[1000] w-full py-4" style={{ background: baseColor }}>
+    <div 
+      className="fixed top-0 z-[1000] py-4" 
+      style={{ 
+        background: baseColor,
+        left: leftOffset,
+        width: `calc(100% - ${leftOffset})`,
+        transition: 'left 0.3s ease-in-out, width 0.3s ease-in-out',
+      }}
+    >
       <nav
-        className={`max-w-7xl mx-auto px-6 w-full relative box-border ${className}`}
+        className={`w-full relative box-border ${
+          align === 'left' ? 'mr-auto' : align === 'right' ? 'ml-auto' : 'mx-auto'
+        } ${className}`}
+        style={{
+          ...cssVars,
+          maxWidth: maxWidth,
+          paddingLeft: logo ? '1.5rem' : '1rem',
+          paddingRight: logo ? '1.5rem' : '1.5rem',
+        }}
         aria-label="Primary"
-        style={cssVars}
       >
         <div className="flex items-center justify-between">
           {/* Logo on the left */}
-          <div className="z-20">
-            {isRouterLink(items?.[0]?.href) ? (
-              <Link
-                href={items[0].href}
-                aria-label="Home"
-                onMouseEnter={handleLogoEnter}
-                role="menuitem"
-                ref={(el) => {
-                  logoRef.current = el;
-                }}
-                className="rounded-full p-1 inline-flex items-center justify-center overflow-hidden"
-                style={{
-                  width: "var(--logo)",
-                  height: "var(--logo)",
-                  background: "var(--base, #000)",
-                  boxShadow: "none",
-                  border: "none",
-                }}
-              >
-                <img
-                  src={logo}
-                  alt={logoAlt}
-                  ref={logoImgRef}
-                  className="w-full h-full object-cover block"
-                />
-              </Link>
-            ) : (
-              <a
-                href={items?.[0]?.href || "#"}
-                aria-label="Home"
-                onMouseEnter={handleLogoEnter}
-                ref={(el) => {
-                  logoRef.current = el;
-                }}
-                className="rounded-full p-1 inline-flex items-center justify-center overflow-hidden"
-                style={{
-                  width: "var(--logo)",
-                  height: "var(--logo)",
-                  background: "var(--base, #000)",
-                  boxShadow: "none",
-                  border: "none",
-                }}
-              >
-                <img
-                  src={logo}
-                  alt={logoAlt}
-                  ref={logoImgRef}
-                  className="w-full h-full object-cover block"
-                />
-              </a>
-            )}
-          </div>
+          {logo && (
+            <div className="z-20">
+              {isRouterLink(items?.[0]?.href) ? (
+                <Link
+                  href={items[0].href}
+                  aria-label="Home"
+                  onMouseEnter={handleLogoEnter}
+                  role="menuitem"
+                  ref={(el) => {
+                    logoRef.current = el;
+                  }}
+                  className="rounded-full p-1 inline-flex items-center justify-center overflow-hidden"
+                  style={{
+                    width: "var(--logo)",
+                    height: "var(--logo)",
+                    background: "var(--base, #000)",
+                    boxShadow: "none",
+                    border: "none",
+                  }}
+                >
+                  <img
+                    src={logo}
+                    alt={logoAlt}
+                    ref={logoImgRef}
+                    className="w-full h-full object-cover block"
+                  />
+                </Link>
+              ) : (
+                <a
+                  href={items?.[0]?.href || "#"}
+                  aria-label="Home"
+                  onMouseEnter={handleLogoEnter}
+                  ref={(el) => {
+                    logoRef.current = el;
+                  }}
+                  className="rounded-full p-1 inline-flex items-center justify-center overflow-hidden"
+                  style={{
+                    width: "var(--logo)",
+                    height: "var(--logo)",
+                    background: "var(--base, #000)",
+                    boxShadow: "none",
+                    border: "none",
+                  }}
+                >
+                  <img
+                    src={logo}
+                    alt={logoAlt}
+                    ref={logoImgRef}
+                    className="w-full h-full object-cover block"
+                  />
+                </a>
+              )}
+            </div>
+          )}
+          
+          {/* Spacer when no logo to push wallet button to the right */}
+          {!logo && <div className="flex-1" />}
           
           {/* Wallet button on the right */}
-          <div className="hidden md:block z-20">
+          <div className="hidden md:block z-20 ml-auto">
             {renderWalletButton && renderWalletButton()}
           </div>
           
@@ -360,7 +386,9 @@ const PillNav: React.FC<PillNavProps> = ({
         {/* Nav items centered absolutely */}
         <div
           ref={navItemsRef}
-          className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 items-center rounded-full hidden md:flex z-10"
+          className={`absolute top-1/2 transform -translate-y-1/2 items-center rounded-full hidden md:flex z-10 ${
+            logo ? 'left-1/2 -translate-x-1/2' : 'left-4'
+          }`}
           style={{
             height: "var(--nav-h)",
             background: "var(--base, #000)",
