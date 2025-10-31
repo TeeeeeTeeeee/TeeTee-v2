@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useRouter } from "next/router";
 import CountUp from "./CountUp";
 
 export const CallToAction = () => {
+  const router = useRouter();
+  
   return (
     <section className="py-20 text-center">
         <h2 className="text-[72px] font-bold mb-4">

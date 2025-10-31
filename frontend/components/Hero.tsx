@@ -1,10 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Particles from './Particles';
 
 export const Hero = () => {
   const [isMounted, setIsMounted] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     setIsMounted(true);
@@ -61,7 +63,10 @@ export const Hero = () => {
 
             {/* Call to Action Buttons - Using pointer-events-auto to ensure buttons are clickable */}
             <div className="flex gap-6">
-              <button className="pointer-events-auto bg-gradient-to-r from-violet-400 to-purple-300 text-white px-8 py-3 rounded-full text-lg font-medium hover:opacity-90 transition-opacity">
+              <button 
+                onClick={() => router.push('/chat')}
+                className="pointer-events-auto bg-gradient-to-r from-violet-400 to-purple-300 text-white px-8 py-3 rounded-full text-lg font-medium hover:opacity-90 transition-opacity"
+              >
                 Run on TeeTee
               </button>
             </div>
