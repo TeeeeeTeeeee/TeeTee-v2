@@ -116,6 +116,16 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
       return;
     }
 
+    // Skip verification if there's a duplicate URL error
+    if (urlDuplicationError) {
+      setHealthCheckStatus('idle');
+      setAttestationCheckStatus('idle');
+      setHealthCheckError(null);
+      setAttestationCheckError(null);
+      setAttestationHash(null);
+      return;
+    }
+
     const verifyEndpoint = async () => {
       setIsVerifying(true);
       setHealthCheckStatus('checking');
@@ -209,7 +219,7 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
     // Debounce the verification to avoid too many requests
     const timeoutId = setTimeout(verifyEndpoint, 800);
     return () => clearTimeout(timeoutId);
-  }, [formData.shardUrl, currentStep]);
+  }, [formData.shardUrl, currentStep, urlDuplicationError]);
 
   // Handle step change
   const handleStepChange = async (newStep: number) => {
@@ -364,7 +374,7 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
             </div>
 
             {/* Verification Status - Two Separate Checks */}
-            {formData.shardUrl && (
+            {formData.shardUrl && !urlDuplicationError && (
               <div className="space-y-3">
                 {/* Health Check Status */}
                 <div className={`p-4 rounded-lg border-2 transition-all ${
@@ -480,27 +490,27 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
                   </div>
                 </div>
 
-                {/* URL Duplication Check */}
-                {urlDuplicationError && (
-                  <div className="p-4 rounded-lg border-2 bg-red-50 border-red-300 transition-all">
-                    <div className="flex items-start gap-3">
-                      <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <div className="flex-1">
-                        <h4 className="text-sm font-semibold text-red-900">
-                          ✗ Duplicate URL Detected
-                        </h4>
-                        <p className="text-xs text-red-700 mt-1">{urlDuplicationError}</p>
-                        <div className="mt-2 p-2 bg-white rounded border border-red-200">
-                          <p className="text-xs font-medium text-gray-700 mb-1">First host's URL:</p>
-                          <code className="text-xs font-mono text-red-700 break-all">{existingShardUrl}</code>
-                        </div>
-                      </div>
+              </div>
+            )}
+
+            {/* URL Duplication Check - Show separately when there's a duplicate */}
+            {urlDuplicationError && formData.shardUrl && (
+              <div className="p-4 rounded-lg border-2 bg-red-50 border-red-300 transition-all">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-red-900">
+                      ✗ Duplicate URL Detected
+                    </h4>
+                    <p className="text-xs text-red-700 mt-1">{urlDuplicationError}</p>
+                    <div className="mt-2 p-2 bg-white rounded border border-red-200">
+                      <p className="text-xs font-medium text-gray-700 mb-1">First host's URL:</p>
+                      <code className="text-xs font-mono text-red-700 break-all">{existingShardUrl}</code>
                     </div>
                   </div>
-                )}
-
+                </div>
               </div>
             )}
 
