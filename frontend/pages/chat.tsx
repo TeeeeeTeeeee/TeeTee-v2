@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
+import { readContract } from '@wagmi/core';
 import { encode, isWithinTokenLimit } from 'gpt-tokenizer';
 import { MessageSquare } from 'lucide-react';
 import {
@@ -15,9 +16,12 @@ import {
   useBuyCredits,
   useUsePrompt,
 } from '@/lib/contracts/creditUse';
+import { useGetTotalLLMs } from '@/lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useInference } from '../hooks/useInference';
 import { useCheckINFTAuthorization } from '../hooks/useINFT';
 import { Navbar } from '@/components/Navbar';
+import ABI from '../utils/abi.json';
+import { CONTRACT_ADDRESS } from '../utils/address';
 
 interface Conversation {
   _id: string;
@@ -38,10 +42,21 @@ interface Message {
   timestamp: Date;
 }
 
+interface HostedModel {
+  id: number;
+  modelName: string;
+  host1: string;
+  host2: string;
+  shardUrl1: string;
+  shardUrl2: string;
+  isComplete: boolean;
+}
+
 const ChatPage = () => {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -59,7 +74,15 @@ const ChatPage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<Conversation | null>(null);
 
+  // Hosted models from blockchain
+  const [hostedModels, setHostedModels] = useState<HostedModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+
   const { address, isConnected } = useAccount();
+  const config = useConfig();
+  
+  // Get total LLMs from contract
+  const { totalLLMs } = useGetTotalLLMs();
 
   // Contract: credits and buy
   const { data: myCredits, refetch: refetchMyCredits } = useCheckUserCredits(address);
@@ -100,6 +123,80 @@ const ChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Fetch all complete hosted models from blockchain
+  useEffect(() => {
+    const fetchHostedModels = async () => {
+      if (totalLLMs === undefined) {
+        setHostedModels([]);
+        return;
+      }
+
+      setIsLoadingModels(true);
+      
+      try {
+        const models: HostedModel[] = [];
+        
+        // Fetch all LLMs and filter for complete ones
+        for (let i = 0; i < Number(totalLLMs); i++) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [BigInt(i)]
+            }) as any;
+            
+            if (data) {
+              const host1 = data.host1 || data[0] || '';
+              const host2 = data.host2 || data[1] || '';
+              const isComplete = data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false);
+              
+              // Only add complete models to the list
+              if (isComplete || (host1 !== '0x0000000000000000000000000000000000000000' && host2 !== '0x0000000000000000000000000000000000000000')) {
+                models.push({
+                  id: i,
+                  modelName: data.modelName || data[4] || 'Unknown Model',
+                  host1,
+                  host2,
+                  shardUrl1: data.shardUrl1 || data[2] || '',
+                  shardUrl2: data.shardUrl2 || data[3] || '',
+                  isComplete: true
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${i}:`, error);
+          }
+        }
+        
+        // Deduplicate models by name - keep the first occurrence
+        const uniqueModels: HostedModel[] = [];
+        const seenNames = new Set<string>();
+        
+        for (const model of models) {
+          if (!seenNames.has(model.modelName)) {
+            seenNames.add(model.modelName);
+            uniqueModels.push(model);
+          }
+        }
+        
+        setHostedModels(uniqueModels);
+        
+        // Auto-select first model if none selected
+        if (uniqueModels.length > 0 && !selectedModel) {
+          setSelectedModel(uniqueModels[0].modelName);
+          setSelectedModelId(uniqueModels[0].id);
+        }
+      } catch (error) {
+        console.error('Error fetching hosted models:', error);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchHostedModels();
+  }, [totalLLMs, config]);
+
   // Prevent browser close/refresh during save
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -134,12 +231,6 @@ const ChatPage = () => {
       router.events.off('routeChangeStart', handleRouteChange);
     };
   }, [isSavingToStorage, router]);
-
-  const models = [
-    'gpt-4o-mini',
-    'gpt-4o',
-    'gpt-4.1-mini',
-  ];
 
   // Chat sessions from local JSON storage
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -410,11 +501,13 @@ const ChatPage = () => {
     // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      // Use INFT inference instead of OpenAI
-      // Token ID 1 is assumed - in production, track the user's INFT token
-      const tokenId = 1;
+      // Check if a model is selected
+      if (selectedModelId === null) {
+        throw new Error('Please select a model first');
+      }
       
-      const inferenceResult = await runINFTInference(tokenId, message, address);
+      // Use INFT inference with the selected model ID
+      const inferenceResult = await runINFTInference(selectedModelId, message, address);
       
       const text = inferenceResult?.output || 'No response from INFT';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
@@ -464,31 +557,65 @@ const ChatPage = () => {
           <div className="relative">
             <button
               onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={isLoadingModels || hostedModels.length === 0}
+              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{selectedModel}</span>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-2 min-w-0">
+                {isLoadingModels ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Loading models...</span>
+                  </>
+                ) : hostedModels.length === 0 ? (
+                  <span className="text-gray-500">No models available</span>
+                ) : (
+                  <span className="truncate">{selectedModel || 'Select a model'}</span>
+                )}
+              </div>
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {showModelDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
-                {models.map((model) => (
+            {showModelDropdown && hostedModels.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                {hostedModels.map((model) => (
                   <button
-                    key={model}
+                    key={model.id}
                     onClick={() => {
-                      setSelectedModel(model);
+                      setSelectedModel(model.modelName);
+                      setSelectedModelId(model.id);
                       setShowModelDropdown(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg transition-colors"
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                      selectedModelId === model.id
+                        ? 'bg-violet-50 text-violet-900'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
-                    {model}
+                    {model.modelName}
                   </button>
                 ))}
               </div>
             )}
           </div>
           
+          {/* No Models Available Message */}
+          {!isLoadingModels && hostedModels.length === 0 && (
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800 font-medium mb-1">No models available</p>
+              <p className="text-xs text-yellow-700 mb-2">There are no complete hosted models yet.</p>
+              <Link 
+                href="/models" 
+                className="text-xs text-violet-600 hover:text-violet-700 font-medium underline"
+              >
+                Go to Models page →
+              </Link>
+            </div>
+          )}
+
           {/* Token Display and Buy Button */}
           <div className="mt-3 space-y-2">
             <div className="flex items-center justify-between text-xs px-2">
@@ -518,7 +645,7 @@ const ChatPage = () => {
               />
               <span className="text-xs text-gray-700 font-medium">
                 Use hosted INFT
-                <span className="block text-[10px] text-gray-500 font-normal">(no tokens)</span>
+                <span className="block text-[10px] text-gray-500 font-normal">(No Tokens Used)</span>
               </span>
             </label>
           </div>
@@ -700,8 +827,9 @@ const ChatPage = () => {
                   <button 
                     onClick={handleSendMessage}
                     className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-                    disabled={isUsingPrompt || isGenerating || isINFTInferring}
+                    disabled={isUsingPrompt || isGenerating || isINFTInferring || selectedModelId === null || !message.trim()}
                     title={
+                      selectedModelId === null ? 'Please select a model first' :
                       isUsingPrompt ? 'Waiting for transaction…' : 
                       isINFTInferring || isGenerating ? 'INFT is processing...' : 
                       'Send'
