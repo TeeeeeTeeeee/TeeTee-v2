@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  llm-server:
+    image: derek2403/teetee-llm-server:latest
+    container_name: teetee-llm-server
+    ports:
+      - "3001:3001"
+    environment:
+      - PHALA_API_KEY=${PHALA_API_KEY}
+      - PORT=3001
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock
+    # Health check will use the PORT env variable automatically from Dockerfile
+    # Works with any URL - no hardcoded localhost
+
