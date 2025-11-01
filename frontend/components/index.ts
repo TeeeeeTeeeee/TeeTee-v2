@@ -15,3 +15,4 @@ export { ConfigurationSummary } from './ConfigurationSummary';
 export { AvailableHostingSlots } from './AvailableHostingSlots';
 export { MyHostedModels } from './MyHostedModels';
 export { ModelFilters } from './ModelFilters';
+export { AddModelForm } from './AddModelForm';
