@@ -135,7 +135,7 @@ export default function Stepper({
           {onCancel && (
             <button
               onClick={onCancel}
-              className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-red-600 hover:text-red-700 hover:bg-red-50"
+              className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               {...cancelButtonProps}
             >
               {cancelButtonText}
@@ -147,7 +147,7 @@ export default function Stepper({
             {currentStep !== 1 && (
               <button
                 onClick={handleBack}
-                className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
                 {...backButtonProps}
               >
                 {backButtonText}
@@ -155,7 +155,7 @@ export default function Stepper({
             )}
             <button
               onClick={isLastStep ? handleComplete : handleNext}
-              className="duration-350 flex items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 py-2.5 px-8 text-base font-semibold tracking-tight text-white transition hover:opacity-90 shadow-lg"
+              className="duration-350 flex items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 py-2.5 px-8 text-base font-semibold tracking-tight text-white transition hover:opacity-90 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:opacity-50"
               {...nextButtonProps}
             >
               {isLastStep ? 'Complete' : nextButtonText}
