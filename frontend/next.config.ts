@@ -9,19 +9,9 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Turbopack configuration (replaces webpack config when using --turbopack)
+  // Turbopack configuration - no aliases needed, let Spline work normally
   turbopack: {
-    resolveAlias: {
-      // Stub problematic modules - use relative path for Windows compatibility
-      "@splinetool/react-spline": "./utils/emptyModule.tsx",
-    },
-  },
-  // Keep webpack config as fallback when not using --turbopack
-  webpack: (config: any) => {
-    config.resolve = config.resolve || {};
-    config.resolve.alias = config.resolve.alias || {};
-    config.resolve.alias["@splinetool/react-spline"] = require.resolve("./utils/emptyModule.tsx");
-    return config;
+    // Empty for now - can add custom loaders or aliases here if needed
   },
   devIndicators: false,
 } as NextConfig;
