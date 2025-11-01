@@ -12,3 +12,6 @@ export { default as Stepper, Step } from './Stepper';
 export { ModelCard } from './ModelCard';
 export { ShardCard } from './ShardCard';
 export { ConfigurationSummary } from './ConfigurationSummary';
+export { AvailableHostingSlots } from './AvailableHostingSlots';
+export { MyHostedModels } from './MyHostedModels';
+export { ModelFilters } from './ModelFilters';

@@ -8,6 +8,9 @@ import Stepper, { Step } from '../components/Stepper';
 import { ModelCard } from '../components/ModelCard';
 import { ShardCard } from '../components/ShardCard';
 import { ConfigurationSummary } from '../components/ConfigurationSummary';
+import { AvailableHostingSlots } from '../components/AvailableHostingSlots';
+import { MyHostedModels } from '../components/MyHostedModels';
+import { ModelFilters } from '../components/ModelFilters';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
@@ -157,8 +160,15 @@ const ModelsPage = () => {
   // Fetch models hosted by the current user
   useEffect(() => {
     const fetchMyHostedModels = async () => {
-      if (!connectedAddress || totalLLMs === undefined) {
+      if (!connectedAddress) {
         setMyHostedModels([]);
+        setIsLoadingMyModels(false);
+        return;
+      }
+
+      if (totalLLMs === undefined) {
+        setMyHostedModels([]);
+        setIsLoadingMyModels(false);
         return;
       }
 
@@ -693,355 +703,49 @@ const ModelsPage = () => {
             </div>
 
             {/* Search and Filter Controls */}
-            <div className="bg-white rounded-lg mb-8">
-              <div className="flex flex-col lg:flex-row gap-6 items-center justify-between">
-                {/* Search */}
-                <div className="flex-1 max-w-md w-full">
-                  <div className="relative">
-                    <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input
-                      type="text"
-                      placeholder="Search models by name, shard, or wallet..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
+            <ModelFilters
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              filterStatus={filterStatus}
+              setFilterStatus={setFilterStatus}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              incompleteLLMCount={incompleteLLMDetails.length}
+              myModelsCount={myHostedModels.length}
+              connectedAddress={connectedAddress}
+              isLoadingMyModels={isLoadingMyModels}
+            />
 
-                {/* Filter Buttons */}
-                <div className="flex items-center flex-1 gap-6">
-                  <button
-                    onClick={() => setFilterStatus('all')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
-                      filterStatus === 'all'
-                        ? 'text-violet-600 bg-violet-100 scale-105'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
-                    }`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
-                    </svg>
-                    All ({incompleteLLMDetails.length})
-                  </button>
-                  
-                  <div className="h-6 w-px bg-gray-300"></div>
-                  
-                  {connectedAddress && (
-                    <>
-                      <button
-                        onClick={() => setFilterStatus('mymodels')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
-                          filterStatus === 'mymodels'
-                            ? 'text-violet-600 bg-violet-100 scale-105'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
-                        }`}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                        </svg>
-                        My Models ({myHostedModels.length})
-                      </button>
-                      
-                      <div className="h-6 w-px bg-gray-300"></div>
-                    </>
-                  )}
-                  
-                  <button
-                    onClick={() => setFilterStatus('inactive')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
-                      filterStatus === 'inactive'
-                        ? 'text-violet-600 bg-violet-100 scale-105'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
-                    }`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                    </svg>
-                    Available ({incompleteLLMDetails.length})
-                  </button>
-                </div>
-
-                {/* Sort Button */}
-                <div className="relative">
-                  <button className="flex items-center justify-center w-10 h-10 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-                    </svg>
-                  </button>
-                  
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'name' | 'date' | 'status')}
-                    className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
-                  >
-                    <option value="date">Date Added</option>
-                    <option value="name">Name</option>
-                    <option value="status">Status</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {(isLoadingIncomplete || (filterStatus === 'mymodels' && isLoadingMyModels)) ? (
-              <div className="flex items-center justify-center py-10">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
-              </div>
-            ) : filterStatus === 'mymodels' ? (
-              // Show user's hosted models
-              myHostedModels.length === 0 ? (
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-200 p-8">
-                  <div className="text-center max-w-md mx-auto">
-                    <div className="mb-4">
-                      <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">No models hosted yet</h3>
-                    <p className="text-gray-600 mb-4">You're not currently hosting any models. Start by adding a new model or joining an existing hosting slot!</p>
-                    <button
-                      onClick={() => setShowAddForm(true)}
-                      className="px-6 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
-                    >
-                      Add Your First Model
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {myHostedModels
-                    .filter(model => {
-                      // Apply search filter
-                      if (searchTerm) {
-                        return model.modelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               model.host1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               (model.host2 && model.host2.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                               model.shardUrl1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               (model.shardUrl2 && model.shardUrl2.toLowerCase().includes(searchTerm.toLowerCase()));
-                      }
-                      return true;
-                    })
-                    .map((model) => {
-                      const userIsHost1 = model.host1.toLowerCase() === connectedAddress!.toLowerCase();
-                      const userIsHost2 = model.host2?.toLowerCase() === connectedAddress!.toLowerCase();
-                      const userRole = userIsHost1 ? 'Host 1' : 'Host 2';
-                      const userShard = userIsHost1 ? model.shardUrl1 : model.shardUrl2;
-                      const partnerAddress = userIsHost1 ? model.host2 : model.host1;
-                      const partnerShard = userIsHost1 ? model.shardUrl2 : model.shardUrl1;
-
-                      return (
-                        <motion.div
-                          key={model.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-300 p-6 hover:border-green-400 transition-all shadow-sm"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg text-gray-900 mb-2">{model.modelName}</h3>
-                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                Hosting Active
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 mb-4">
-                            {/* Your Role */}
-                            <div className="p-3 bg-white bg-opacity-60 rounded-lg">
-                              <div className="flex items-center gap-2 mb-2">
-                                <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                </svg>
-                                <span className="text-xs font-semibold text-gray-700">Your Role:</span>
-                              </div>
-                              <div className="text-sm font-medium text-violet-700">{userRole}</div>
-                              <div className="text-xs text-gray-600 mt-1">
-                                Shard: {AVAILABLE_SHARDS.find(s => s.id === userShard)?.name || userShard}
-                                {AVAILABLE_SHARDS.find(s => s.id === userShard) && (
-                                  <span className="ml-1">({AVAILABLE_SHARDS.find(s => s.id === userShard)?.region})</span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Partner Info */}
-                            {partnerAddress && partnerAddress !== '0x0000000000000000000000000000000000000000' && (
-                              <div className="p-3 bg-white bg-opacity-40 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                  </svg>
-                                  <span className="text-xs font-semibold text-gray-700">Partner:</span>
-                                </div>
-                                <div className="text-xs font-mono text-gray-700">{partnerAddress.slice(0, 10)}...{partnerAddress.slice(-8)}</div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                  Shard: {AVAILABLE_SHARDS.find(s => s.id === partnerShard)?.name || partnerShard}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Pool Balance */}
-                            <div className="p-3 bg-gradient-to-r from-violet-100 to-purple-100 rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  <span className="text-xs font-semibold text-gray-700">Rewards Pool:</span>
-                                </div>
-                                <span className="text-sm font-bold text-violet-700">{model.poolBalance?.toString() || '0'}</span>
-                              </div>
-                            </div>
-
-                            {/* Model Status */}
-                            <div className="flex items-center justify-between text-xs text-gray-600">
-                              <span>Model ID: #{model.id}</span>
-                              <span className={`px-2 py-1 rounded-full font-medium ${
-                                model.isComplete 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {model.isComplete ? 'Complete' : 'Waiting for Partner'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="space-y-2">
-                            <button
-                              onClick={() => router.push('/chat')}
-                              className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
-                              Use in Chat
-                            </button>
-                            
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => handlePauseModel(model.id)}
-                                disabled={pausingModelId === model.id || stoppingModelId === model.id}
-                                className="py-2 px-3 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors font-medium text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Report downtime for this model"
-                              >
-                                {pausingModelId === model.id ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-700"></div>
-                                    Pausing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Pause
-                                  </>
-                                )}
-                              </button>
-                              
-                              <button
-                                onClick={() => handleStopModel(model)}
-                                disabled={pausingModelId === model.id || stoppingModelId === model.id}
-                                className="py-2 px-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Stop hosting this model"
-                              >
-                                {stoppingModelId === model.id ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
-                                    Stopping...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                                    </svg>
-                                    Stop
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                </div>
-              )
-            ) : incompleteLLMDetails.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="text-center max-w-md">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">No available slots</h3>
-                  <p className="text-gray-600">There are currently no hosting slots waiting for a second host</p>
-                </div>
-              </div>
+            {filterStatus === 'mymodels' ? (
+              <MyHostedModels
+                myHostedModels={myHostedModels}
+                isLoadingMyModels={isLoadingMyModels}
+                searchTerm={searchTerm}
+                availableShards={AVAILABLE_SHARDS}
+                connectedAddress={connectedAddress!}
+                pausingModelId={pausingModelId}
+                stoppingModelId={stoppingModelId}
+                onShowAddForm={() => setShowAddForm(true)}
+                onPauseModel={handlePauseModel}
+                onStopModel={handleStopModel}
+              />
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {incompleteLLMDetails
-                  .filter(llm => {
-                    // Apply search filter
-                    if (searchTerm) {
-                      return llm.modelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             llm.host1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             llm.shardUrl1.toLowerCase().includes(searchTerm.toLowerCase());
-                    }
-                    return true;
-                  })
-                  .map((llm) => (
-                  <motion.div
-                    key={llm.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-200 p-6 hover:border-violet-400 transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-gray-900 mb-1">{llm.modelName}</h3>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                          </svg>
-                          Waiting for 2nd host
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-sm mb-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Host 1:</span>
-                        <span className="font-mono text-xs text-gray-700">{llm.host1.slice(0, 10)}...</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Shard 1:</span>
-                        <span className="text-gray-700">{AVAILABLE_SHARDS.find(s => s.id === llm.shardUrl1)?.name || llm.shardUrl1}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500">Pool Balance:</span>
-                        <span className="text-violet-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedLLMId(llm.id);
+              <AvailableHostingSlots
+                incompleteLLMDetails={incompleteLLMDetails}
+                isLoadingIncomplete={isLoadingIncomplete}
+                searchTerm={searchTerm}
+                availableShards={AVAILABLE_SHARDS}
+                connectedAddress={connectedAddress}
+                onJoinAsHost={(llmId) => {
+                  setSelectedLLMId(llmId);
                         setJoinFormData({
-                          llmId: llm.id,
+                    llmId: llmId,
                           shard: '',
                           walletAddress: connectedAddress || ''
                         });
                         setShowJoinForm(true);
                       }}
-                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm"
-                    >
-                      Join as Host 2
-                    </button>
-                  </motion.div>
-                ))}
-              </div>
+              />
             )}
           </motion.div>
         )}
