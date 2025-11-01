@@ -642,8 +642,8 @@ const ModelsPage = () => {
                   
                   {/* Transaction Status */}
                   {(isWriting || isConfirming || isMinting || isAuthorizing) && (
-                    <div className="flex items-center gap-3 text-sm text-blue-200 p-4 bg-blue-900 bg-opacity-30 rounded-lg border border-blue-700">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-400"></div>
+                    <div className="flex items-center gap-3 text-sm text-blue-700 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-600"></div>
                       <span>
                         {isWriting ? 'Submitting transaction...' : 
                          isConfirming ? 'Confirming registration...' : 
@@ -654,14 +654,14 @@ const ModelsPage = () => {
                   )}
                   
                   {writeError && (
-                    <div className="p-4 bg-red-900 bg-opacity-30 border border-red-700 rounded-lg">
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                       <div className="flex items-start gap-2">
-                        <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <div>
-                          <div className="font-medium text-red-300 text-sm">Transaction Error</div>
-                          <div className="text-sm text-red-200 mt-0.5">
+                          <div className="font-medium text-red-900 text-sm">Transaction Error</div>
+                          <div className="text-sm text-red-700 mt-0.5">
                             {writeError.message.slice(0, 80)}...
                           </div>
                         </div>
