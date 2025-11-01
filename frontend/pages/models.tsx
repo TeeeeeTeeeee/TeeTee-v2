@@ -590,12 +590,12 @@ const ModelsPage = () => {
               <Step>
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-violet-400 mb-2">Your Wallet Address</h3>
-                    <p className="text-base text-gray-300">Enter your wallet address to receive hosting rewards</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Your Wallet Address</h3>
+                    <p className="text-base text-gray-600">Enter your wallet address to receive hosting rewards</p>
                   </div>
                   
                   <div>
-                    <label htmlFor="walletAddress" className="block text-sm font-medium text-gray-300 mb-2">
+                    <label htmlFor="walletAddress" className="block text-sm font-medium text-gray-700 mb-2">
                       Wallet Address *
                     </label>
                     <div className="flex gap-2">
@@ -629,8 +629,8 @@ const ModelsPage = () => {
               <Step>
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-violet-400 mb-2">Review & Confirm</h3>
-                    <p className="text-base text-gray-300">Please review your configuration before submitting</p>
+                    <h3 className="text-2xl font-bold text-gray-900 mb-2">Review & Confirm</h3>
+                    <p className="text-base text-gray-600">Please review your configuration before submitting</p>
                   </div>
 
                   {/* Summary Card */}
