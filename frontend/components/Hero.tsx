@@ -51,8 +51,8 @@ export const Hero = () => {
               </div>
             </div>
 
-            {/* Right Side - Spline 3D Scene - Much Bigger */}
-            <div className="h-[600px] w-full relative overflow-visible scale-150">
+            {/* Right Side - Spline 3D Scene */}
+            <div className="h-[600px] w-full relative overflow-visible" style={{ transform: 'scale(1.2)' }}>
               {isMounted && (
                 <div style={{ 
                   width: '100%', 

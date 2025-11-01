@@ -16,6 +16,7 @@ import {
 } from '@/lib/contracts/creditUse';
 import { useInference } from '../hooks/useInference';
 import { useCheckINFTAuthorization } from '../hooks/useINFT';
+import { Navbar } from '@/components/Navbar';
 
 interface Conversation {
   _id: string;
@@ -445,6 +446,9 @@ const ChatPage = () => {
 
   return (
     <div className="relative flex h-screen font-inter">
+      {/* New Navbar */}
+      <Navbar />
+      
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -473,31 +477,14 @@ const ChatPage = () => {
 
       {/* Sidebar */}
       <motion.div 
-        className="fixed left-0 top-0 bg-white flex flex-col h-screen border-r border-gray-200"
+        className="fixed left-0 top-20 bg-white flex flex-col h-[calc(100vh-80px)] border-r border-gray-200"
         animate={{
           width: isOpen ? "260px" : "60px"
         }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
-        {/* Logo and Title with Toggle */}
-        <div className="p-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 min-w-0">
-            <Image 
-              src="/images/TeeTee.png" 
-              alt="TeeTee Logo" 
-              width={32} 
-              height={32}
-              className="flex-shrink-0"
-            />
-            {isOpen && (
-              <span className="text-xl" style={{ fontFamily: 'var(--font-pacifico)' }}>
-                <span className="bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text truncate">
-                  TeeTee
-                </span>
-              </span>
-            )}
-          </Link>
-          {/* Sidebar Toggle Button */}
+        {/* Sidebar Toggle Button */}
+        <div className="p-4 flex items-center justify-between border-b border-gray-200">
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="p-1.5 hover:bg-gray-100 rounded-md transition-colors flex-shrink-0"
@@ -506,63 +493,7 @@ const ChatPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-        </div>
-
-        {/* Navigation Links */}
-        <div className="px-2 py-2">
-          <nav className="flex flex-col gap-1">
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                if (isSavingToStorage) {
-                  const confirmed = window.confirm(
-                    'Your chat is still being saved to 0G Storage. ' +
-                    'Leaving this page now may interrupt the save. Continue anyway?'
-                  );
-                  if (!confirmed) return;
-                }
-                router.push('/');
-              }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors text-left w-full"
-              title={!isOpen ? "Home" : ""}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              {isOpen && <span>Home</span>}
-            </button>
-            <Link 
-              href="/chat"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm bg-gradient-to-r from-violet-400 to-violet-400 text-white transition-colors"
-              title={!isOpen ? "Chat" : ""}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
-              {isOpen && <span>Chat</span>}
-            </Link>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                if (isSavingToStorage) {
-                  const confirmed = window.confirm(
-                    'Your chat is still being saved to 0G Storage. ' +
-                    'Leaving this page now may interrupt the save. Continue anyway?'
-                  );
-                  if (!confirmed) return;
-                }
-                router.push('/models');
-              }}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 hover:bg-violet-200/50 cursor-pointer transition-colors text-left w-full"
-              title={!isOpen ? "Models" : ""}
-            >
-              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              {isOpen && <span>Models</span>}
-            </button>
-
-          </nav>
+          {isOpen && <span className="text-sm font-medium text-gray-700">Chat History</span>}
         </div>
 
         {/* Tokens + Buy / INFT Status */}
@@ -746,7 +677,7 @@ const ChatPage = () => {
 
       {/* Main Chat Area */}
       <motion.main
-        className="flex-1 h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20"
+        className="flex-1 h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20"
         animate={{
           marginLeft: isOpen ? "260px" : "60px",
           width: `calc(100% - ${isOpen ? "260px" : "60px"})`
