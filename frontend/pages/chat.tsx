@@ -448,10 +448,17 @@ const ChatPage = () => {
   return (
     <div className="relative flex h-screen font-inter">
       {/* New Navbar */}
-      <Navbar />
+      <Navbar hideLogo={true} hasSidebar={true} />
       
       {/* Left Sidebar - ChatGPT Style */}
-      <div className="fixed left-0 top-20 h-[calc(100vh-80px)] w-64 bg-white border-r border-gray-200 flex flex-col z-[999]">
+      <div className="fixed left-0 top-0 h-screen w-56 bg-white border-r border-gray-200 flex flex-col z-[1001]">
+        {/* TeeTee Logo */}
+        <div className="px-4 pt-6 pb-4 flex justify-center">
+          <span className="text-4xl bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-pacifico)' }}>
+            TeeTee
+          </span>
+        </div>
+        
         {/* Model Selection at the top */}
         <div className="p-4 border-b border-gray-200">
           <div className="relative">
@@ -480,6 +487,40 @@ const ChatPage = () => {
                 ))}
               </div>
             )}
+          </div>
+          
+          {/* Token Display and Buy Button */}
+          <div className="mt-3 space-y-2">
+            <div className="flex items-center justify-between text-xs px-2">
+              <span className="text-gray-600">Tokens Left:</span>
+              <span className="font-semibold text-gray-900">
+                {isConnected ? (myCredits?.toString() || '0') : '-'}
+              </span>
+            </div>
+            <button
+              onClick={handleBuyBundle}
+              disabled={!isConnected || isBuying}
+              className="w-full px-3 py-2 text-xs font-medium text-violet-600 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {isBuying ? 'Buying...' : 'Buy Tokens (0.001 OG)'}
+            </button>
+          </div>
+          
+          {/* INFT Toggle */}
+          <div className="mt-3 flex items-center justify-between px-2 py-2 bg-gray-50 rounded-lg">
+            <label htmlFor="inft-toggle" className="flex items-center gap-2 cursor-pointer flex-1">
+              <input
+                id="inft-toggle"
+                type="checkbox"
+                checked={useINFTInference}
+                onChange={(e) => setUseINFTInference(e.target.checked)}
+                className="w-4 h-4 text-violet-600 bg-white border-gray-300 rounded focus:ring-violet-500 focus:ring-2 cursor-pointer"
+              />
+              <span className="text-xs text-gray-700 font-medium">
+                Use hosted INFT
+                <span className="block text-[10px] text-gray-500 font-normal">(no tokens)</span>
+              </span>
+            </label>
           </div>
           
           {/* New Chat Button */}
@@ -585,18 +626,18 @@ const ChatPage = () => {
       )}
 
       {/* Main Chat Area - With left sidebar offset */}
-      <main className="ml-64 w-[calc(100%-256px)] h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20">
+      <main className="ml-56 w-[calc(100%-224px)] h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20">
 
-        {/* Centered Chat Container */}
+        {/* Centered Chat Container - Aligned with Navbar center */}
         <div className="flex-1 flex flex-col overflow-auto">
-          <div className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col w-full">
+          <div className="fixed left-1/2 -translate-x-1/2 top-20 bottom-0 w-full max-w-4xl px-8 py-8 flex flex-col overflow-y-auto">
             {/* Loading state */}
             {isLoadingMessages ? (
               <div className="flex-1 flex flex-col items-center justify-center">
                 <div className="animate-pulse text-gray-600">Loading messages...</div>
               </div>
             ) : messages.length > 0 ? (
-              <div className="flex-1 flex flex-col space-y-4 overflow-y-auto pb-4">
+              <div className="flex-1 flex flex-col space-y-4 pb-4">
                 {messages.map((msg) => (
                   <div 
                     key={msg.id}
@@ -632,7 +673,7 @@ const ChatPage = () => {
           
             {/* Input Area */}
             <div className="mt-auto pb-6">
-              <div className="relative w-full max-w-3xl mx-auto">
+              <div className="relative w-full mx-auto">
                 <div className="flex items-center bg-white border border-gray-200 rounded-full px-4 py-3 shadow-lg hover:shadow-xl transition-shadow">
                   {/* File Attach Icon */}
                   <button className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors">

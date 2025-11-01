@@ -3,7 +3,12 @@ import { NavBar } from './ui/tubelight-navbar';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useState, useEffect } from 'react';
 
-export const Navbar = () => {
+interface NavbarProps {
+  hideLogo?: boolean;
+  hasSidebar?: boolean;
+}
+
+export const Navbar = ({ hideLogo = false, hasSidebar = false }: NavbarProps) => {
   const [isScrolled, setIsScrolled] = useState(false);
 
   const navItems = [
@@ -29,8 +34,8 @@ export const Navbar = () => {
       }`}
     >
       <div className="max-w-7xl mx-auto px-6 w-full relative flex items-center justify-between">
-        {/* TeeTee Logo on the left - aligned with navbar */}
-        <div className="flex items-center z-20 h-12">
+        {/* TeeTee Logo on the left - transparent on chat page */}
+        <div className={`flex items-center z-20 h-12 ${hideLogo ? 'opacity-0 pointer-events-none' : ''}`}>
           <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-pacifico)' }}>
             <span className="bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text">
               TeeTee
@@ -38,8 +43,8 @@ export const Navbar = () => {
           </h1>
         </div>
         
-        {/* Tubelight Navbar in the center (absolute positioning to keep it centered) */}
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        {/* Tubelight Navbar in the center - always centered at 50vw */}
+        <div className="fixed left-1/2 top-4 -translate-x-1/2">
           <NavBar items={navItems} className="relative" />
         </div>
         
