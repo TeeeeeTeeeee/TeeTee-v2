@@ -1,24 +1,29 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   /* config options here */
   reactStrictMode: true,
   eslint: {
-    // Allow production builds to succeed even if there are ESLint errors
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // Allow production builds to succeed even if there are type errors
     ignoreBuildErrors: true,
   },
-  webpack: (config) => {
-    // Stub problematic modules to allow build without changing app code
+  // Turbopack configuration (replaces webpack config when using --turbopack)
+  turbopack: {
+    resolveAlias: {
+      // Stub problematic modules - use relative path for Windows compatibility
+      "@splinetool/react-spline": "./utils/emptyModule.tsx",
+    },
+  },
+  // Keep webpack config as fallback when not using --turbopack
+  webpack: (config: any) => {
     config.resolve = config.resolve || {};
     config.resolve.alias = config.resolve.alias || {};
     config.resolve.alias["@splinetool/react-spline"] = require.resolve("./utils/emptyModule.tsx");
     return config;
   },
   devIndicators: false,
-};
+} as NextConfig;
 
 export default nextConfig;
