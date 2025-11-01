@@ -6,6 +6,24 @@ import { ShardCard } from './ShardCard';
 import { ConfigurationSummary } from './ConfigurationSummary';
 import { verifyTEEEndpoint } from '../utils/teeVerification';
 
+// LLM Icon mapping - Maps model names to image URLs
+const LLM_ICONS: Record<string, string> = {
+  'TinyLlama-1.1B-Chat-v1.0': '/images/tinyllama.png',
+  'Mistral-7B-Instruct-v0.3': 'https://vectorseek.com/wp-content/uploads/2023/12/Mistral-AI-Icon-Logo-Vector.svg-.png',
+  'Qwen2.5-7B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/qwen-color.png',
+  'Phi-3-Mini-4K-Instruct': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Microsoft_icon.svg/2048px-Microsoft_icon.svg.png',
+  'Gemma-2-2B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/gemma-color.png',
+  'GPT-3.5-Turbo': 'https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/openai-icon.png',
+  'Claude-3-Haiku': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/light/anthropic.png',
+  'DeepSeek-V2-Lite': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/deepseek-color.png'
+};
+
+const DEFAULT_LLM_ICON = 'https://w7.pngwing.com/pngs/839/288/png-transparent-hugging-face-favicon-logo-tech-companies-thumbnail.png';
+
+const getModelIcon = (modelName: string): string => {
+  return LLM_ICONS[modelName] || DEFAULT_LLM_ICON;
+};
+
 interface AddModelFormData {
   modelName: string;
   walletAddress: string;
@@ -235,6 +253,7 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
                   modelName={model}
                   isSelected={formData.modelName === model}
                   onSelect={(modelName) => setFormData({ ...formData, modelName })}
+                  iconUrl={getModelIcon(model)}
                 />
               ))}
             </div>

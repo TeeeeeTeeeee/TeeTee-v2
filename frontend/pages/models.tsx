@@ -4,10 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
-import Stepper, { Step } from '../components/Stepper';
-import { ModelCard } from '../components/ModelCard';
-import { ShardCard } from '../components/ShardCard';
-import { ConfigurationSummary } from '../components/ConfigurationSummary';
+import { AddModelForm } from '../components/AddModelForm';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
@@ -17,19 +14,12 @@ import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
 import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
-import { verifyTEEEndpoint } from '../utils/teeVerification';
 
-interface AddModelForm {
+interface AddModelFormData {
   modelName: string;
   walletAddress: string;
   shardSelection: string;
   shardUrl: string;
-}
-
-interface JoinHostForm {
-  llmId: number;
-  shard: string;
-  walletAddress: string;
 }
 
 interface IncompleteLLM {
@@ -47,12 +37,34 @@ interface IncompleteLLM {
 
 const AVAILABLE_MODELS = [
   'TinyLlama-1.1B-Chat-v1.0',
-  'Llama-2-7B-Chat',
-  'Mistral-7B-Instruct',
-  'CodeLlama-7B-Python',
-  'Phi-2-2.7B',
-  'Gemma-2B-Instruct'
+  'Mistral-7B-Instruct-v0.3',
+  'Qwen2.5-7B-Instruct',
+  'Phi-3-Mini-4K-Instruct',
+  'Gemma-2-2B-Instruct',
+  'GPT-3.5-Turbo',
+  'Claude-3-Haiku',
+  'DeepSeek-V2-Lite'
 ];
+
+// LLM Icon mapping - Maps model names to image URLs
+const LLM_ICONS: Record<string, string> = {
+  'TinyLlama-1.1B-Chat-v1.0': '/images/tinyllama.png',
+  'Mistral-7B-Instruct-v0.3': 'https://vectorseek.com/wp-content/uploads/2023/12/Mistral-AI-Icon-Logo-Vector.svg-.png',
+  'Qwen2.5-7B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/qwen-color.png',
+  'Phi-3-Mini-4K-Instruct': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Microsoft_icon.svg/2048px-Microsoft_icon.svg.png',
+  'Gemma-2-2B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/gemma-color.png',
+  'GPT-3.5-Turbo': 'https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/openai-icon.png',
+  'Claude-3-Haiku': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/light/anthropic.png',
+  'DeepSeek-V2-Lite': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/deepseek-color.png'
+};
+
+// Default icon URL for models not in the mapping
+const DEFAULT_LLM_ICON = 'https://www.redpill.ai/_next/image?url=https%3A%2F%2Ft0.gstatic.com%2FfaviconV2%3Fclient%3DSOCIAL%26type%3DFAVICON%26fallback_opts%3DTYPE%2CSIZE%2CURL%26url%3Dhttps%3A%2F%2Fhuggingface.co%2F%26size%3D32&w=48&q=75';
+
+// Helper function to get icon URL for a model
+const getModelIcon = (modelName: string): string => {
+  return LLM_ICONS[modelName] || DEFAULT_LLM_ICON;
+};
 
 const AVAILABLE_SHARDS = [
   { id: 'shard-1', name: 'Shard 1', region: 'US-East', capacity: '75%' },
@@ -67,21 +79,13 @@ const ModelsPage = () => {
   const router = useRouter();
   const [showAddForm, setShowAddForm] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'date' | 'status'>('date');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'hosting' | 'inactive' | 'mymodels'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'incomplete' | 'mymodels'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState<AddModelForm>({
-    modelName: '',
-    walletAddress: '',
-    shardSelection: '',
-    shardUrl: ''
-  });
-  const [joinFormData, setJoinFormData] = useState<JoinHostForm>({
-    llmId: 0,
-    shard: '',
-    walletAddress: ''
-  });
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
+  const [selectedModelName, setSelectedModelName] = useState<string>('');
+  const [allModels, setAllModels] = useState<IncompleteLLM[]>([]);
+  const [isLoadingAllModels, setIsLoadingAllModels] = useState(false);
   const [incompleteLLMDetails, setIncompleteLLMDetails] = useState<IncompleteLLM[]>([]);
   const [isLoadingIncomplete, setIsLoadingIncomplete] = useState(false);
   const [showClaimINFTModal, setShowClaimINFTModal] = useState(false);
@@ -93,13 +97,6 @@ const ModelsPage = () => {
   const [stoppingModelId, setStoppingModelId] = useState<number | null>(null);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [modelToStop, setModelToStop] = useState<IncompleteLLM | null>(null);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [healthCheckStatus, setHealthCheckStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
-  const [healthCheckError, setHealthCheckError] = useState<string | null>(null);
-  const [attestationCheckStatus, setAttestationCheckStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
-  const [attestationCheckError, setAttestationCheckError] = useState<string | null>(null);
-  const [attestationHash, setAttestationHash] = useState<string | null>(null);
 
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
@@ -111,6 +108,59 @@ const ModelsPage = () => {
   // INFT hooks for minting and authorization
   const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
   const { authorize: authorizeINFT, isPending: isAuthorizing, isConfirmed: isAuthConfirmed } = useAuthorizeINFT();
+
+  // Fetch ALL models (complete + incomplete)
+  useEffect(() => {
+    const fetchAllModels = async () => {
+      if (totalLLMs === undefined) {
+        setAllModels([]);
+        return;
+      }
+
+      setIsLoadingAllModels(true);
+      
+      try {
+        const models: IncompleteLLM[] = [];
+        
+        // Fetch all LLMs
+        for (let i = 0; i < Number(totalLLMs); i++) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [BigInt(i)]
+            }) as any;
+            
+            if (data) {
+              models.push({
+                id: i,
+                modelName: data.modelName || data[4] || 'Unknown Model',
+                host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                host2: data.host2 || data[1] || '0x0000000000000000000000000000000000000000',
+                shardUrl1: data.shardUrl1 || data[2] || '',
+                shardUrl2: data.shardUrl2 || data[3] || '',
+                poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
+                totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n),
+                totalTimeHost2: data.totalTimeHost2 !== undefined ? data.totalTimeHost2 : (data[7] !== undefined ? data[7] : 0n),
+                isComplete: data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false)
+              });
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${i}:`, error);
+          }
+        }
+        
+        setAllModels(models);
+      } catch (error) {
+        console.error('Error fetching all models:', error);
+      } finally {
+        setIsLoadingAllModels(false);
+      }
+    };
+
+    fetchAllModels();
+  }, [totalLLMs, config, isConfirmed]);
 
   // Fetch incomplete LLM details
   useEffect(() => {
@@ -227,19 +277,6 @@ const ModelsPage = () => {
   // Reset form state
   const resetForm = () => {
     setShowAddForm(false);
-    setFormData({
-      modelName: '',
-      walletAddress: '',
-      shardSelection: '',
-      shardUrl: ''
-    });
-    setCurrentStep(1);
-    setIsVerifying(false);
-    setHealthCheckStatus('idle');
-    setHealthCheckError(null);
-    setAttestationCheckStatus('idle');
-    setAttestationCheckError(null);
-    setAttestationHash(null);
     resetWrite();
   };
 
@@ -247,147 +284,12 @@ const ModelsPage = () => {
   const resetJoinForm = () => {
     setShowJoinForm(false);
     setSelectedLLMId(null);
-    setJoinFormData({
-      llmId: 0,
-      shard: '',
-      walletAddress: ''
-    });
-  };
-
-  // Auto-verify when shard URL changes (with debounce)
-  useEffect(() => {
-    if (!formData.shardUrl || currentStep !== 4) {
-      setHealthCheckStatus('idle');
-      setAttestationCheckStatus('idle');
-      setHealthCheckError(null);
-      setAttestationCheckError(null);
-      setAttestationHash(null);
-      return;
-    }
-
-    const verifyEndpoint = async () => {
-      setIsVerifying(true);
-      setHealthCheckStatus('checking');
-      setAttestationCheckStatus('idle');
-      setHealthCheckError(null);
-      setAttestationCheckError(null);
-      setAttestationHash(null);
-
-      try {
-        const baseUrl = formData.shardUrl.endsWith('/') ? formData.shardUrl : `${formData.shardUrl}/`;
-        
-        // Step 1: Health Check
-        const healthResponse = await fetch(`${baseUrl}health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        if (!healthResponse.ok) {
-          setHealthCheckStatus('error');
-          setHealthCheckError('Health check failed. TEE endpoint is not accessible.');
-          setIsVerifying(false);
-          return;
-        }
-
-        setHealthCheckStatus('success');
-
-        // Step 2: Attestation Check
-        setAttestationCheckStatus('checking');
-        
-        const attestResponse = await fetch(`${baseUrl}attest/quick`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        });
-
-        if (!attestResponse.ok) {
-          setAttestationCheckStatus('error');
-          setAttestationCheckError('Attestation request failed.');
-          setIsVerifying(false);
-          return;
-        }
-
-        const attestationData = await attestResponse.json();
-
-        if (!attestationData.success) {
-          setAttestationCheckStatus('error');
-          setAttestationCheckError('Attestation was not successful.');
-          setIsVerifying(false);
-          return;
-        }
-
-        if (!attestationData.note) {
-          setAttestationCheckStatus('error');
-          setAttestationCheckError('Attestation note not found.');
-          setIsVerifying(false);
-          return;
-        }
-
-        // Generate SHA-256 hash of the note
-        const encoder = new TextEncoder();
-        const data = encoder.encode(attestationData.note);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-
-        // Verify hash matches expected value
-        const EXPECTED_HASH = 'df99bee2e34b5f653722df6fb654c0d906c57173b6be3fab104815e58ce064bc';
-        
-        if (hashHex !== EXPECTED_HASH) {
-          setAttestationCheckStatus('error');
-          setAttestationCheckError(`Hash mismatch. Expected: ${EXPECTED_HASH}, Got: ${hashHex}`);
-          setIsVerifying(false);
-          return;
-        }
-
-        setAttestationHash(hashHex);
-        setAttestationCheckStatus('success');
-        setIsVerifying(false);
-
-      } catch (error: any) {
-        if (healthCheckStatus === 'checking') {
-          setHealthCheckStatus('error');
-          setHealthCheckError(error.message || 'Failed to connect to health endpoint.');
-        } else {
-          setAttestationCheckStatus('error');
-          setAttestationCheckError(error.message || 'Failed to verify attestation.');
-        }
-        setIsVerifying(false);
-      }
-    };
-
-    // Debounce the verification to avoid too many requests
-    const timeoutId = setTimeout(verifyEndpoint, 800);
-    return () => clearTimeout(timeoutId);
-  }, [formData.shardUrl, currentStep]);
-
-  // Handle step change
-  const handleStepChange = async (newStep: number) => {
-    setCurrentStep(newStep);
-  };
-
-  // Validation logic for each step
-  const isStepValid = (step: number): boolean => {
-    switch (step) {
-      case 1: // Model Selection
-        return !!formData.modelName;
-      case 2: // Wallet Address
-        return !!formData.walletAddress && formData.walletAddress.length > 0;
-      case 3: // Shard Selection
-        return !!formData.shardSelection;
-      case 4: // TEE Shard URL - valid ONLY if both checks pass
-        return !!formData.shardUrl && 
-               healthCheckStatus === 'success' && 
-               attestationCheckStatus === 'success' && 
-               !isVerifying;
-      case 5: // Review & Confirm
-        return true; // Always valid on review step
-      default:
-        return false;
-    }
+    setSelectedModelName('');
+    resetWrite();
   };
 
   // Handle form submission for registering first host
-  const handleAddModel = async () => {
+  const handleAddModel = async (formData: AddModelFormData) => {
     if (!formData.modelName || !formData.shardUrl || !formData.walletAddress || totalLLMs === undefined) {
       return;
     }
@@ -399,6 +301,9 @@ const ModelsPage = () => {
 
     try {
       resetWrite();
+      
+      // Store model name for the claim modal later
+      setRegisteredModelName(formData.modelName);
       
       // Register first host on blockchain (creates slot)
       // Pass totalLLMs as llmId to create new entry
@@ -420,8 +325,8 @@ const ModelsPage = () => {
   };
 
   // Handle joining as second host
-  const handleJoinAsSecondHost = async () => {
-    if (selectedLLMId === null || !joinFormData.shard || !joinFormData.walletAddress) return;
+  const handleJoinAsSecondHost = async (formData: AddModelFormData) => {
+    if (selectedLLMId === null || !formData.walletAddress || !formData.shardUrl) return;
 
     if (!connectedAddress) {
       alert('Please connect your wallet first');
@@ -431,7 +336,9 @@ const ModelsPage = () => {
     try {
       resetWrite();
       
-      const selectedShard = AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard);
+      // Store model name for the claim modal later
+      const llmDetails = incompleteLLMDetails.find(llm => llm.id === selectedLLMId);
+      setRegisteredModelName(llmDetails?.modelName || 'Model');
       
       // Join as second host on blockchain
       // Pass existing llmId, leave host1 fields as 0/empty to keep them, fill in host2 fields
@@ -439,9 +346,9 @@ const ModelsPage = () => {
       await registerLLM(
         selectedLLMId,                                  // llmId - existing entry
         '0x0000000000000000000000000000000000000000',  // host1 - empty (keep existing)
-        joinFormData.walletAddress,                     // host2 - new host
+        formData.walletAddress,                         // host2 - new host
         '',                                             // shardUrl1 - empty (keep existing)
-        selectedShard?.id || joinFormData.shard,       // shardUrl2
+        formData.shardUrl,                              // shardUrl2 - TEE endpoint URL
         '',                                             // modelName - empty (keep existing)
         0,                                              // totalTimeHost1 - 0 (keep existing)
         0                                               // totalTimeHost2 - will be set by oracle
@@ -454,11 +361,9 @@ const ModelsPage = () => {
 
   // Effect to handle successful model registration - show claim modal instead of auto-minting
   useEffect(() => {
-    if (isConfirmed && connectedAddress && !showJoinForm && formData.modelName) {
+    if (isConfirmed && connectedAddress && !showJoinForm && registeredModelName) {
       console.log('Model registered successfully! Showing claim INFT modal...');
       
-      // Store the model name for the modal
-      setRegisteredModelName(formData.modelName);
       setIsSecondHost(false);
       
       // Show claim modal
@@ -470,12 +375,9 @@ const ModelsPage = () => {
       // Refetch data
       refetchIncomplete();
       refetchTotal();
-    } else if (isConfirmed && showJoinForm && selectedLLMId !== null) {
+    } else if (isConfirmed && showJoinForm && registeredModelName) {
       console.log('Joined as second host successfully! Showing claim INFT modal...');
       
-      // Get the model name from incompleteLLMDetails
-      const llmDetails = incompleteLLMDetails.find(llm => llm.id === selectedLLMId);
-      setRegisteredModelName(llmDetails?.modelName || 'Model');
       setIsSecondHost(true);
       
       // Show claim modal
@@ -488,7 +390,7 @@ const ModelsPage = () => {
       refetchIncomplete();
       refetchTotal();
     }
-  }, [isConfirmed, connectedAddress, showJoinForm, formData.modelName, selectedLLMId, incompleteLLMDetails]);
+  }, [isConfirmed, connectedAddress, showJoinForm, registeredModelName]);
   
   // Effect to handle successful INFT mint - then authorize the user
   useEffect(() => {
@@ -658,432 +560,22 @@ const ModelsPage = () => {
 
         {/* Add Model Form - Expands when button is clicked */}
         {showAddForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-12"
-          >
-            <Stepper
-              initialStep={1}
-              onStepChange={handleStepChange}
-              onFinalStepCompleted={handleAddModel}
-              backButtonText="Previous"
-              nextButtonText="Next"
-              cancelButtonText="Cancel"
+          <AddModelForm
+            availableModels={AVAILABLE_MODELS}
+            availableShards={AVAILABLE_SHARDS}
+            connectedAddress={connectedAddress}
+            onSubmit={handleAddModel}
             onCancel={resetForm}
-              nextButtonProps={{
-                disabled: !isStepValid(currentStep) || isWriting || isConfirming || isMinting || isAuthorizing
-              }}
-              backButtonProps={{
-                disabled: isWriting || isConfirming || isMinting || isAuthorizing
-              }}
-              cancelButtonProps={{
-                disabled: isWriting || isConfirming || isMinting || isAuthorizing
-              }}
-            >
-              {/* Step 1: Model Selection */}
-              <Step>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Select Model</h3>
-                    <p className="text-xs text-gray-600">Choose from available AI models</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {AVAILABLE_MODELS.map((model) => (
-                      <ModelCard
-                        key={model}
-                        modelName={model}
-                        isSelected={formData.modelName === model}
-                        onSelect={(modelName) => setFormData({ ...formData, modelName })}
-                      />
-                    ))}
-                  </div>
-                  
-                  {!formData.modelName && (
-                    <p className="text-xs text-amber-600">Please select a model to continue</p>
-                  )}
-                </div>
-              </Step>
-
-              {/* Step 2: Wallet Address */}
-              <Step>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Your Wallet Address</h3>
-                    <p className="text-xs text-gray-600">Enter your wallet address to receive hosting rewards</p>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="walletAddress" className="block text-xs font-medium text-gray-700 mb-2">
-                      Wallet Address *
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        id="walletAddress"
-                        type="text"
-                        value={formData.walletAddress}
-                        onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
-                        placeholder="0x1234567890abcdef..."
-                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => connectedAddress && setFormData({ ...formData, walletAddress: connectedAddress })}
-                        disabled={!connectedAddress}
-                        className="px-3 py-2 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-xs font-medium"
-                        title={connectedAddress ? 'Use connected wallet' : 'No wallet connected'}
-                      >
-                        Use Connected
-                      </button>
-                    </div>
-                  </div>
-
-                  {!formData.walletAddress && (
-                    <p className="text-xs text-amber-600">Please enter your wallet address to continue</p>
-                  )}
-                </div>
-              </Step>
-
-              {/* Step 3: Shard Selection */}
-              <Step>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Select Shard Layer</h3>
-                    <p className="text-xs text-gray-600">Choose which shard layer to host your model on</p>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Shard 1 Option */}
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, shardSelection: 'shard1' })}
-                      className={`p-5 rounded-xl border-2 transition-all text-left ${
-                        formData.shardSelection === 'shard1'
-                          ? 'border-violet-400 bg-violet-50 shadow-md'
-                          : 'border-gray-200 hover:border-violet-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                            formData.shardSelection === 'shard1'
-                              ? 'border-violet-600 bg-violet-600'
-                              : 'border-gray-300'
-                          }`}>
-                            {formData.shardSelection === 'shard1' && (
-                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                              </svg>
-                            )}
-                          </div>
-                          <h4 className="text-base font-bold text-gray-900">Shard 1</h4>
-                        </div>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          formData.shardSelection === 'shard1'
-                            ? 'bg-violet-200 text-violet-800'
-                            : 'bg-gray-200 text-gray-700'
-                        }`}>
-                          Lower
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600">Host layers 1 to 50 of the model</p>
-                    </button>
-
-                    {/* Shard 2 Option */}
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, shardSelection: 'shard2' })}
-                      className={`p-5 rounded-xl border-2 transition-all text-left ${
-                        formData.shardSelection === 'shard2'
-                          ? 'border-violet-400 bg-violet-50 shadow-md'
-                          : 'border-gray-200 hover:border-violet-200 bg-white'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                            formData.shardSelection === 'shard2'
-                              ? 'border-violet-600 bg-violet-600'
-                              : 'border-gray-300'
-                          }`}>
-                            {formData.shardSelection === 'shard2' && (
-                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                              </svg>
-                            )}
-                          </div>
-                          <h4 className="text-base font-bold text-gray-900">Shard 2</h4>
-                        </div>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          formData.shardSelection === 'shard2'
-                            ? 'bg-violet-200 text-violet-800'
-                            : 'bg-gray-200 text-gray-700'
-                        }`}>
-                          Upper
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600">Host layers 51 to 100 of the model</p>
-                    </button>
-                  </div>
-                  
-                  {!formData.shardSelection && (
-                    <p className="text-xs text-amber-600">Please select a shard layer to continue</p>
-                  )}
-                </div>
-              </Step>
-
-              {/* Step 4: TEE Shard URL */}
-              <Step>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">TEE Shard URL</h3>
-                    <p className="text-xs text-gray-600">Enter your Phala TEE shard endpoint URL for attestation</p>
-                  </div>
-                  
-                  <div>
-                    <label htmlFor="shardUrl" className="block text-xs font-medium text-gray-700 mb-2">
-                      Shard URL *
-                    </label>
-                    <input
-                      id="shardUrl"
-                      type="url"
-                      value={formData.shardUrl}
-                      onChange={(e) => setFormData({ ...formData, shardUrl: e.target.value })}
-                      placeholder="https://1e8ddb822fabefe60399b39bbfb83478c1a12e3c-3001.dstack-pha-prod7.phala.network/"
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                    />
-                    <p className="mt-2 text-xs text-gray-500">
-                      Example: https://[app-id]-3001.dstack-pha-prod7.phala.network/
-                    </p>
-                  </div>
-
-                  {/* Verification Status - Two Separate Checks */}
-                  {formData.shardUrl && (
-                    <div className="space-y-3">
-                      {/* Health Check Status */}
-                      <div className={`p-3 rounded-lg border-2 transition-all ${
-                        healthCheckStatus === 'checking'
-                          ? 'bg-yellow-50 border-yellow-300'
-                          : healthCheckStatus === 'success'
-                          ? 'bg-green-50 border-green-300'
-                          : healthCheckStatus === 'error'
-                          ? 'bg-red-50 border-red-300'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}>
-                        <div className="flex items-start gap-2">
-                          {healthCheckStatus === 'checking' ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 flex-shrink-0 mt-0.5"></div>
-                          ) : healthCheckStatus === 'success' ? (
-                            <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          ) : healthCheckStatus === 'error' ? (
-                            <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          )}
-                          <div className="flex-1">
-                            <h4 className={`text-xs font-semibold ${
-                              healthCheckStatus === 'checking'
-                                ? 'text-yellow-900'
-                                : healthCheckStatus === 'success'
-                                ? 'text-green-900'
-                                : healthCheckStatus === 'error'
-                                ? 'text-red-900'
-                                : 'text-gray-600'
-                            }`}>
-                              {healthCheckStatus === 'checking'
-                                ? '1. Checking Health Endpoint...'
-                                : healthCheckStatus === 'success'
-                                ? '✓ 1. Health Check Passed'
-                                : healthCheckStatus === 'error'
-                                ? '✗ 1. Health Check Failed'
-                                : '1. Health Check - Waiting'}
-                            </h4>
-                            {healthCheckError && (
-                              <p className="text-xs text-red-700 mt-0.5">{healthCheckError}</p>
-                            )}
-                            {healthCheckStatus === 'success' && (
-                              <p className="text-xs text-green-700 mt-0.5">Endpoint is accessible and responding</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Attestation Check Status */}
-                      <div className={`p-3 rounded-lg border-2 transition-all ${
-                        attestationCheckStatus === 'checking'
-                          ? 'bg-yellow-50 border-yellow-300'
-                          : attestationCheckStatus === 'success'
-                          ? 'bg-green-50 border-green-300'
-                          : attestationCheckStatus === 'error'
-                          ? 'bg-red-50 border-red-300'
-                          : 'bg-gray-50 border-gray-200'
-                      }`}>
-                        <div className="flex items-start gap-2">
-                          {attestationCheckStatus === 'checking' ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 flex-shrink-0 mt-0.5"></div>
-                          ) : attestationCheckStatus === 'success' ? (
-                            <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          ) : attestationCheckStatus === 'error' ? (
-                            <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          ) : (
-                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          )}
-                          <div className="flex-1">
-                            <h4 className={`text-xs font-semibold ${
-                              attestationCheckStatus === 'checking'
-                                ? 'text-yellow-900'
-                                : attestationCheckStatus === 'success'
-                                ? 'text-green-900'
-                                : attestationCheckStatus === 'error'
-                                ? 'text-red-900'
-                                : 'text-gray-600'
-                            }`}>
-                              {attestationCheckStatus === 'checking'
-                                ? '2. Verifying Attestation Note...'
-                                : attestationCheckStatus === 'success'
-                                ? '✓ 2. Model Hash Verified'
-                                : attestationCheckStatus === 'error'
-                                ? '✗ 2. Attestation Note Failed'
-                                : '2. Attestation Check - Waiting'}
-                            </h4>
-                            {attestationCheckError && (
-                              <p className="text-xs text-red-700 mt-0.5">{attestationCheckError}</p>
-                            )}
-                            {attestationCheckStatus === 'success' && attestationHash && (
-                              <div className="mt-2">
-                                <p className="text-xs text-green-700 mb-1">Model Hash matches expected value</p>
-                                <div className="p-2 bg-white rounded border border-green-200">
-                                  <p className="text-xs font-medium text-gray-700 mb-1">Attestation Hash:</p>
-                                  <code className="text-xs font-mono text-green-700 break-all">{attestationHash}</code>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-                  )}
-
-                  {!formData.shardUrl && (
-                    <p className="text-xs text-amber-600">Please enter your shard URL to continue</p>
-                  )}
-                </div>
-              </Step>
-
-              {/* Step 5: Review & Confirm */}
-              <Step>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Review & Confirm</h3>
-                    <p className="text-xs text-gray-600">Please review your configuration before submitting</p>
-                  </div>
-
-                  {/* Summary Card */}
-                  <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-200 p-4">
-                    <h4 className="font-bold text-base text-gray-900 mb-3">Configuration Summary</h4>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-600">Model:</span>
-                        <span className="text-xs font-semibold text-gray-900">{formData.modelName || 'Not selected'}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-600">Wallet:</span>
-                        <span className="text-xs font-mono text-gray-900">
-                          {formData.walletAddress ? `${formData.walletAddress.slice(0, 10)}...${formData.walletAddress.slice(-8)}` : 'Not provided'}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-600">Shard Layer:</span>
-                        <span className="text-xs font-semibold text-gray-900">
-                          {formData.shardSelection === 'shard1' ? 'Shard 1 (Layers 1-50)' : 
-                           formData.shardSelection === 'shard2' ? 'Shard 2 (Layers 51-100)' : 
-                           'Not selected'}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs text-gray-600">TEE Shard:</span>
-                        <span className="text-xs font-mono text-violet-700 break-all">
-                          {formData.shardUrl || 'Not provided'}
-                        </span>
-                      </div>
-                      {attestationHash && (
-                        <div className="flex flex-col gap-1 pt-2 border-t border-violet-200">
-                          <div className="flex items-center gap-2">
-                            <svg className="w-3 h-3 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                            </svg>
-                            <span className="text-xs text-gray-600 font-medium">TEE Verified</span>
-                          </div>
-                          <div className="p-2 bg-white rounded border border-green-200">
-                            <p className="text-xs font-medium text-gray-700 mb-1">Attestation Hash:</p>
-                            <code className="text-xs font-mono text-green-700 break-all">{attestationHash.slice(0, 32)}...</code>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Transaction Status */}
-                  {(isWriting || isConfirming || isMinting || isAuthorizing) && (
-                    <div className="p-3 bg-blue-50 rounded-lg border-2 border-blue-300">
-                      <div className="flex items-start gap-3">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-600 flex-shrink-0 mt-0.5"></div>
-                        <div className="flex-1">
-                          <h4 className="text-sm font-semibold text-blue-900 mb-1">
-                            {isWriting ? '⏳ Waiting for Transaction Signature' : 
-                             isConfirming ? '⏳ Transaction Confirming...' : 
-                             isMinting ? '⏳ Minting INFT Token...' : 
-                             isAuthorizing ? '⏳ Authorizing Access...' : '⏳ Processing...'}
-                          </h4>
-                          <p className="text-xs text-blue-700">
-                            {isWriting ? 'Please sign the transaction in your wallet to continue' : 
-                             isConfirming ? 'Your transaction is being confirmed on the blockchain...' : 
-                             isMinting ? 'Creating your INFT token...' : 
-                             isAuthorizing ? 'Setting up access permissions...' : 'Please wait...'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {writeError && (
-                    <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <div className="font-medium text-red-900 text-xs">Transaction Error</div>
-                          <div className="text-xs text-red-700 mt-0.5">
-                            {writeError.message.slice(0, 80)}...
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Step>
-            </Stepper>
-          </motion.div>
+            isWriting={isWriting}
+            isConfirming={isConfirming}
+            isMinting={isMinting}
+            isAuthorizing={isAuthorizing}
+            writeError={writeError}
+          />
         )}
 
         {/* Available Hosting Slots Section - Show incomplete LLMs waiting for second host or user's hosted models */}
-        {!showAddForm && (
+        {!showAddForm && !showJoinForm && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1091,30 +583,37 @@ const ModelsPage = () => {
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {filterStatus === 'mymodels' ? 'My Hosted Models' : 'Available Hosting Slots'}
+                {filterStatus === 'mymodels' ? 'My Hosted Models' : 
+                 filterStatus === 'all' ? 'All Models' :
+                 filterStatus === 'available' ? 'Available Models' :
+                 'Models Needing Host'}
               </h2>
               <p className="text-gray-600">
                 {filterStatus === 'mymodels' 
                   ? 'Models you are currently hosting' 
-                  : 'Join as the second host for these models'}
+                  : filterStatus === 'all'
+                  ? 'All registered models on the network'
+                  : filterStatus === 'available'
+                  ? 'Complete models ready to use'
+                  : 'Incomplete models waiting for a second host'}
               </p>
             </div>
 
             {/* Search and Filter Controls */}
             <div className="bg-white rounded-lg mb-8">
-              <div className="flex flex-col lg:flex-row gap-6 items-center justify-between">
+              <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
                 {/* Search */}
-                <div className="flex-1 max-w-md w-full">
+                <div className="max-w-xs w-full">
                   <div className="relative">
                     <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                     <input
                       type="text"
-                      placeholder="Search models by name, shard, or wallet..."
+                      placeholder="Search models..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-12 pr-12 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none"
+                      className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                   </div>
                 </div>
@@ -1132,13 +631,44 @@ const ModelsPage = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
                     </svg>
-                    All ({incompleteLLMDetails.length})
+                    All ({allModels.length})
                   </button>
                   
                   <div className="h-6 w-px bg-gray-300"></div>
                   
+                      <button
+                    onClick={() => setFilterStatus('available')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
+                      filterStatus === 'available'
+                            ? 'text-violet-600 bg-violet-100 scale-105'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
+                        }`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    Available ({allModels.filter(m => m.isComplete).length})
+                      </button>
+                      
+                      <div className="h-6 w-px bg-gray-300"></div>
+                  
+                  <button
+                    onClick={() => setFilterStatus('incomplete')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
+                      filterStatus === 'incomplete'
+                        ? 'text-violet-600 bg-violet-100 scale-105'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Incomplete ({incompleteLLMDetails.length})
+                  </button>
+                  
                   {connectedAddress && (
                     <>
+                      <div className="h-6 w-px bg-gray-300"></div>
                       <button
                         onClick={() => setFilterStatus('mymodels')}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
@@ -1148,28 +678,12 @@ const ModelsPage = () => {
                         }`}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                         </svg>
                         My Models ({myHostedModels.length})
                       </button>
-                      
-                      <div className="h-6 w-px bg-gray-300"></div>
                     </>
                   )}
-                  
-                  <button
-                    onClick={() => setFilterStatus('inactive')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
-                      filterStatus === 'inactive'
-                        ? 'text-violet-600 bg-violet-100 scale-105'
-                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
-                    }`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-                    </svg>
-                    Available ({incompleteLLMDetails.length})
-                  </button>
                 </div>
 
                 {/* Sort Button */}
@@ -1193,7 +707,7 @@ const ModelsPage = () => {
               </div>
             </div>
 
-            {(isLoadingIncomplete || (filterStatus === 'mymodels' && isLoadingMyModels)) ? (
+            {(isLoadingAllModels || isLoadingIncomplete || (filterStatus === 'mymodels' && isLoadingMyModels)) ? (
               <div className="flex items-center justify-center py-10">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
               </div>
@@ -1244,77 +758,102 @@ const ModelsPage = () => {
                           key={model.id}
                           initial={{ opacity: 0, scale: 0.95 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-300 p-6 hover:border-green-400 transition-all shadow-sm"
+                          className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
                         >
                           <div className="flex items-start justify-between mb-4">
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg text-gray-900 mb-2">{model.modelName}</h3>
-                              <div className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                </svg>
-                                Hosting Active
+                            <div className="flex items-start gap-3 flex-1">
+                              {/* LLM Icon */}
+                              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 p-1.5">
+                                <img 
+                                  src={getModelIcon(model.modelName)} 
+                                  alt={model.modelName}
+                                  className="w-full h-full object-contain"
+                                  onError={(e) => {
+                                    e.currentTarget.src = DEFAULT_LLM_ICON;
+                                  }}
+                                />
                               </div>
+                              <div className="flex-1">
+                                <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
+                              </div>
+                            </div>
+                            {/* Status Badge - Top Right */}
+                            <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-green-100 text-green-700">
+                              ✓ Hosting
                             </div>
                           </div>
 
                           <div className="space-y-3 mb-4">
+                            {/* Model Info */}
+                            <div className="space-y-2 text-xs">
+                              <div className="flex items-start gap-2">
+                                <span className="text-gray-500">Model ID:</span>
+                                <span className="text-gray-900">#{model.id}</span>
+                              </div>
+                            </div>
+
                             {/* Your Role */}
-                            <div className="p-3 bg-white bg-opacity-60 rounded-lg">
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                               <div className="flex items-center gap-2 mb-2">
-                                <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
-                                <span className="text-xs font-semibold text-gray-700">Your Role:</span>
+                                <span className="text-xs font-semibold text-gray-900">Your Role:</span>
                               </div>
-                              <div className="text-sm font-medium text-violet-700">{userRole}</div>
-                              <div className="text-xs text-gray-600 mt-1">
-                                Shard: {AVAILABLE_SHARDS.find(s => s.id === userShard)?.name || userShard}
-                                {AVAILABLE_SHARDS.find(s => s.id === userShard) && (
-                                  <span className="ml-1">({AVAILABLE_SHARDS.find(s => s.id === userShard)?.region})</span>
+                              <div className="text-sm font-medium text-gray-900 mb-2">{userRole}</div>
+                              <div className="space-y-1.5 text-xs text-gray-600">
+                                {!model.isComplete && (
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-gray-500">Shard:</span>
+                                    <span className="text-gray-900">{userIsHost1 ? 'Shard 1' : 'Shard 2'} (Lower Layers)</span>
+                                  </div>
                                 )}
+                                <div className="flex items-start gap-2">
+                                  <span className="text-gray-500 flex-shrink-0">URL:</span>
+                                  <span className="font-mono text-gray-900 break-all">{userShard ? userShard.slice(0, 60) + '...' : 'N/A'}</span>
+                                </div>
                               </div>
                             </div>
 
                             {/* Partner Info */}
                             {partnerAddress && partnerAddress !== '0x0000000000000000000000000000000000000000' && (
-                              <div className="p-3 bg-white bg-opacity-40 rounded-lg">
+                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                                 <div className="flex items-center gap-2 mb-2">
                                   <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                                   </svg>
-                                  <span className="text-xs font-semibold text-gray-700">Partner:</span>
+                                  <span className="text-xs font-semibold text-gray-900">Partner:</span>
                                 </div>
-                                <div className="text-xs font-mono text-gray-700">{partnerAddress.slice(0, 10)}...{partnerAddress.slice(-8)}</div>
-                                <div className="text-xs text-gray-600 mt-1">
-                                  Shard: {AVAILABLE_SHARDS.find(s => s.id === partnerShard)?.name || partnerShard}
+                                <div className="space-y-1.5 text-xs">
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-gray-500">Address:</span>
+                                    <span className="font-mono text-gray-900">{partnerAddress.slice(0, 10)}...{partnerAddress.slice(-8)}</span>
+                                  </div>
+                                  {!model.isComplete && (
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-gray-500">Shard:</span>
+                                      <span className="text-gray-900">{userIsHost1 ? 'Shard 2' : 'Shard 1'} (Upper Layers)</span>
+                                    </div>
+                                  )}
+                                  <div className="flex items-start gap-2">
+                                    <span className="text-gray-500 flex-shrink-0">URL:</span>
+                                    <span className="font-mono text-gray-900 break-all">{partnerShard ? partnerShard.slice(0, 60) + '...' : 'N/A'}</span>
+                                  </div>
                                 </div>
                               </div>
                             )}
 
                             {/* Pool Balance */}
-                            <div className="p-3 bg-gradient-to-r from-violet-100 to-purple-100 rounded-lg">
+                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
-                                  <span className="text-xs font-semibold text-gray-700">Rewards Pool:</span>
+                                  <span className="text-xs font-semibold text-gray-900">Rewards Pool:</span>
                                 </div>
-                                <span className="text-sm font-bold text-violet-700">{model.poolBalance?.toString() || '0'}</span>
+                                <span className="text-sm font-bold text-gray-900">{model.poolBalance?.toString() || '0'}</span>
                               </div>
-                            </div>
-
-                            {/* Model Status */}
-                            <div className="flex items-center justify-between text-xs text-gray-600">
-                              <span>Model ID: #{model.id}</span>
-                              <span className={`px-2 py-1 rounded-full font-medium ${
-                                model.isComplete 
-                                  ? 'bg-green-100 text-green-700' 
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {model.isComplete ? 'Complete' : 'Waiting for Partner'}
-                              </span>
                             </div>
                           </div>
 
@@ -1322,7 +861,7 @@ const ModelsPage = () => {
                           <div className="space-y-2">
                             <button
                               onClick={() => router.push('/chat')}
-                              className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                              className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -1380,16 +919,35 @@ const ModelsPage = () => {
                     })}
                 </div>
               )
-            ) : incompleteLLMDetails.length === 0 ? (
+            ) : (() => {
+              // Determine which models to show based on filter
+              let modelsToShow: IncompleteLLM[] = [];
+              if (filterStatus === 'all') {
+                modelsToShow = allModels;
+              } else if (filterStatus === 'available') {
+                modelsToShow = allModels.filter(m => m.isComplete);
+              } else if (filterStatus === 'incomplete') {
+                modelsToShow = incompleteLLMDetails;
+              }
+              
+              return modelsToShow.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20">
                 <div className="text-center max-w-md">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">No available slots</h3>
-                  <p className="text-gray-600">There are currently no hosting slots waiting for a second host</p>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">
+                      {filterStatus === 'all' ? 'No models found' :
+                       filterStatus === 'available' ? 'No available models' :
+                       'No incomplete models'}
+                    </h3>
+                    <p className="text-gray-600">
+                      {filterStatus === 'all' ? 'There are no models registered on the network yet' :
+                       filterStatus === 'available' ? 'There are no complete models ready to use' :
+                       'There are currently no hosting slots waiting for a second host'}
+                    </p>
                 </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {incompleteLLMDetails
+                  {modelsToShow
                   .filter(llm => {
                     // Apply search filter
                     if (searchTerm) {
@@ -1399,87 +957,126 @@ const ModelsPage = () => {
                     }
                     return true;
                   })
-                  .map((llm) => (
+                  .map((llm) => {
+                    const isComplete = llm.isComplete || (llm.host2 && llm.host2 !== '0x0000000000000000000000000000000000000000');
+                    
+                    return (
                   <motion.div
                     key={llm.id}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-200 p-6 hover:border-violet-400 transition-all"
+                        className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
                   >
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-gray-900 mb-1">{llm.modelName}</h3>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                          </svg>
-                          Waiting for 2nd host
+                          <div className="flex items-start gap-3 flex-1">
+                            {/* LLM Icon */}
+                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 p-1.5">
+                              <img 
+                                src={getModelIcon(llm.modelName)} 
+                                alt={llm.modelName}
+                                className="w-full h-full object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.src = DEFAULT_LLM_ICON;
+                                }}
+                              />
                         </div>
+                            <div className="flex-1">
+                              <h3 className="font-bold text-lg text-gray-900">{llm.modelName}</h3>
+                            </div>
+                          </div>
+                          {/* Status Badge - Top Right */}
+                          <div className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
+                            isComplete 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {isComplete ? '✓ Complete' : '⏳ Pending'}
                       </div>
                     </div>
 
-                    <div className="space-y-2 text-sm mb-4">
-                      <div className="flex items-center gap-2">
+                        <div className="space-y-2 text-xs mb-4">
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500">Model ID:</span>
+                            <span className="text-gray-700">#{llm.id}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
                         <span className="text-gray-500">Host 1:</span>
-                        <span className="font-mono text-xs text-gray-700">{llm.host1.slice(0, 10)}...</span>
+                            <span className="font-mono text-gray-700">{llm.host1.slice(0, 10)}...</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                          {isComplete && llm.host2 && llm.host2 !== '0x0000000000000000000000000000000000000000' && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Host 2:</span>
+                              <span className="font-mono text-gray-700">{llm.host2.slice(0, 10)}...</span>
+                            </div>
+                          )}
+                          {!isComplete && (
+                            <div className="flex items-start gap-2">
                         <span className="text-gray-500">Shard 1:</span>
-                        <span className="text-gray-700">{AVAILABLE_SHARDS.find(s => s.id === llm.shardUrl1)?.name || llm.shardUrl1}</span>
+                              <span className="text-gray-700">Lower Layers (1-50)</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                          )}
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500 flex-shrink-0">URL:</span>
+                            <span className="font-mono text-gray-700 break-all">{llm.shardUrl1.slice(0, 60)}...</span>
+                          </div>
+                          <div className="flex items-start gap-2">
                         <span className="text-gray-500">Pool Balance:</span>
-                        <span className="text-violet-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
+                            <span className="text-gray-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
                       </div>
                     </div>
 
+                        {isComplete ? (
+                          <button
+                            onClick={() => router.push('/chat')}
+                            className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            Use in Chat
+                          </button>
+                        ) : (
                     <button
                       onClick={() => {
                         setSelectedLLMId(llm.id);
-                        setJoinFormData({
-                          llmId: llm.id,
-                          shard: '',
-                          walletAddress: connectedAddress || ''
-                        });
+                              setSelectedModelName(llm.modelName);
                         setShowJoinForm(true);
                       }}
-                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm"
+                            className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
                     >
                       Join as Host 2
                     </button>
+                        )}
                   </motion.div>
-                ))}
+                    );
+                  })}
               </div>
-            )}
+              );
+            })()}
           </motion.div>
         )}
 
-        {/* Join Form Modal */}
+        {/* Join as Second Host Form - Embedded */}
         {showJoinForm && selectedLLMId !== null && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowJoinForm(false)}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="mb-12"
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-xl max-w-2xl w-full max-h-[70vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Form Header */}
-              <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-violet-50 to-purple-50">
-                <div className="flex items-center justify-between">
+            <div className="bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-6 mb-6">
+              <div className="flex items-center justify-between mb-2">
                   <div>
-                    <h2 className="text-xl font-bold text-gray-900">Join as Second Host</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Join as Second Host</h2>
                     <p className="text-sm text-gray-600 mt-1">
-                      Model: {incompleteLLMDetails.find(llm => llm.id === selectedLLMId)?.modelName}
+                    Model: <strong className="text-violet-700">{selectedModelName}</strong>
                     </p>
                   </div>
                   <button
-                    onClick={() => setShowJoinForm(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={resetJoinForm}
+                  disabled={isWriting || isConfirming || isMinting || isAuthorizing}
+                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50 p-2 hover:bg-white rounded-lg"
+                  title="Cancel"
                   >
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1488,143 +1085,18 @@ const ModelsPage = () => {
                 </div>
               </div>
 
-              {/* Form Content */}
-              <div className="p-6 space-y-6">
-                {/* Shard Selection */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">1</span>
-                    Select Your Shard
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">Choose where to host your part of the model</p>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {AVAILABLE_SHARDS.map((shard) => (
-                      <button
-                        key={shard.id}
-                        onClick={() => setJoinFormData({ ...joinFormData, shard: shard.id })}
-                        className={`text-left p-4 rounded-lg border transition-colors ${
-                          joinFormData.shard === shard.id
-                            ? 'border-violet-400 bg-violet-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-medium text-gray-900">{shard.name}</div>
-                          <div className={`text-xs px-2 py-1 rounded-full ${
-                            parseInt(shard.capacity) > 80 
-                              ? 'bg-red-100 text-red-800'
-                              : parseInt(shard.capacity) > 60
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {shard.capacity}
-                          </div>
-                        </div>
-                        <div className="text-sm text-gray-500">{shard.region}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Wallet Address */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-violet-400 text-white text-sm flex items-center justify-center">2</span>
-                    Your Wallet Address
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4">Enter your wallet address to receive hosting rewards</p>
-                  
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={joinFormData.walletAddress}
-                      onChange={(e) => setJoinFormData({ ...joinFormData, walletAddress: e.target.value })}
-                      placeholder="0x1234567890abcdef..."
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => connectedAddress && setJoinFormData({ ...joinFormData, walletAddress: connectedAddress })}
-                      disabled={!connectedAddress}
-                      className="px-4 py-3 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-sm font-medium"
-                      title={connectedAddress ? 'Use connected wallet' : 'No wallet connected'}
-                    >
-                      Use Connected
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                {joinFormData.shard && joinFormData.walletAddress && (
-                  <div className="p-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-lg border border-violet-200">
-                    <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                      <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Summary
-                    </h4>
-                    <div className="space-y-2 text-sm text-gray-700">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Your Shard:</span> 
-                        <span className="text-violet-700">{AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard)?.name} ({AVAILABLE_SHARDS.find(s => s.id === joinFormData.shard)?.region})</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">Your Wallet:</span> 
-                        <span className="text-violet-700 font-mono text-xs">{joinFormData.walletAddress.slice(0, 10)}...</span>
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-violet-200">
-                        <p className="text-xs text-gray-600">ℹ️ Hosting duration will be set by the oracle</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Form Footer */}
-              <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-gray-50">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={resetJoinForm}
-                    disabled={isWriting || isConfirming}
-                    className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  
-                  {/* Transaction Status */}
-                  {(isWriting || isConfirming) && (
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-violet-400"></div>
-                      <span>{isWriting ? 'Submitting transaction...' : 'Confirming...'}</span>
-                    </div>
-                  )}
-                  
-                  {writeError && (
-                    <div className="text-sm text-red-600">
-                      Error: {writeError.message.slice(0, 50)}...
-                    </div>
-                  )}
-                </div>
-
-                <button
-                  onClick={handleJoinAsSecondHost}
-                  disabled={!joinFormData.shard || !joinFormData.walletAddress || isWriting || isConfirming}
-                  className="px-6 py-2 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {(isWriting || isConfirming) ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      {isWriting ? 'Submitting...' : 'Confirming...'}
-                    </>
-                  ) : (
-                    <>
-                      Join as Host 2
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
+            <AddModelForm
+              availableModels={[selectedModelName]}
+              availableShards={AVAILABLE_SHARDS}
+              connectedAddress={connectedAddress}
+              onSubmit={handleJoinAsSecondHost}
+              onCancel={resetJoinForm}
+              isWriting={isWriting}
+              isConfirming={isConfirming}
+              isMinting={isMinting}
+              isAuthorizing={isAuthorizing}
+              writeError={writeError}
+            />
           </motion.div>
         )}
         
