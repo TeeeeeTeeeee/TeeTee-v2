@@ -14,6 +14,7 @@ import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
 import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
+import { areUrlsSame } from '../utils/shardUtils';
 
 interface AddModelFormData {
   modelName: string;
@@ -84,6 +85,7 @@ const ModelsPage = () => {
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
   const [selectedModelName, setSelectedModelName] = useState<string>('');
+  const [existingShardUrl, setExistingShardUrl] = useState<string>('');
   const [allModels, setAllModels] = useState<IncompleteLLM[]>([]);
   const [isLoadingAllModels, setIsLoadingAllModels] = useState(false);
   const [incompleteLLMDetails, setIncompleteLLMDetails] = useState<IncompleteLLM[]>([]);
@@ -285,6 +287,7 @@ const ModelsPage = () => {
     setShowJoinForm(false);
     setSelectedLLMId(null);
     setSelectedModelName('');
+    setExistingShardUrl('');
     resetWrite();
   };
 
@@ -339,6 +342,12 @@ const ModelsPage = () => {
       // Store model name for the claim modal later
       const llmDetails = incompleteLLMDetails.find(llm => llm.id === selectedLLMId);
       setRegisteredModelName(llmDetails?.modelName || 'Model');
+      
+      // Double-check for URL duplication (final validation)
+      if (llmDetails?.shardUrl1 && areUrlsSame(llmDetails.shardUrl1, formData.shardUrl)) {
+        alert('Error: Cannot use the same TEE endpoint URL as the first host. Please use a different endpoint.');
+        return;
+      }
       
       // Join as second host on blockchain
       // Pass existing llmId, leave host1 fields as 0/empty to keep them, fill in host2 fields
@@ -1040,6 +1049,7 @@ const ModelsPage = () => {
                       onClick={() => {
                         setSelectedLLMId(llm.id);
                               setSelectedModelName(llm.modelName);
+                        setExistingShardUrl(llm.shardUrl1 || '');
                         setShowJoinForm(true);
                       }}
                             className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
@@ -1066,11 +1076,32 @@ const ModelsPage = () => {
           >
             <div className="bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-6 mb-6">
               <div className="flex items-center justify-between mb-2">
-                  <div>
+                  <div className="flex-1">
                   <h2 className="text-2xl font-bold text-gray-900">Join as Second Host</h2>
                     <p className="text-sm text-gray-600 mt-1">
                     Model: <strong className="text-violet-700">{selectedModelName}</strong>
                     </p>
+                    <div className="mt-2 flex items-center gap-3 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                        <span className="text-gray-700">Shard 1: Taken</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-700 font-medium">Shard 2: Available</span>
+                      </div>
+                    </div>
+                    {existingShardUrl && (
+                      <div className="mt-2 p-2 bg-white rounded border border-violet-200">
+                        <p className="text-xs font-medium text-gray-700 mb-1">
+                          <svg className="w-3 h-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          First host's TEE URL (you must use a different one):
+                        </p>
+                        <code className="text-xs font-mono text-violet-700 break-all">{existingShardUrl}</code>
+                      </div>
+                    )}
                   </div>
                   <button
                   onClick={resetJoinForm}
@@ -1096,6 +1127,8 @@ const ModelsPage = () => {
               isMinting={isMinting}
               isAuthorizing={isAuthorizing}
               writeError={writeError}
+              availableShard="shard2"
+              existingShardUrl={existingShardUrl}
             />
           </motion.div>
         )}

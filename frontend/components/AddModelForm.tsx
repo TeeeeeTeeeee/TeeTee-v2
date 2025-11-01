@@ -3,8 +3,10 @@ import { motion } from 'framer-motion';
 import Stepper, { Step } from './Stepper';
 import { ModelCard } from './ModelCard';
 import { ShardCard } from './ShardCard';
+import { ShardSelection } from './ShardSelection';
 import { ConfigurationSummary } from './ConfigurationSummary';
 import { verifyTEEEndpoint } from '../utils/teeVerification';
+import { validateUniqueUrl } from '../utils/shardUtils';
 
 // LLM Icon mapping - Maps model names to image URLs
 const LLM_ICONS: Record<string, string> = {
@@ -49,6 +51,8 @@ interface AddModelFormProps {
   isMinting: boolean;
   isAuthorizing: boolean;
   writeError: Error | null;
+  availableShard?: 'shard1' | 'shard2' | null;
+  existingShardUrl?: string; // URL of the first host (to prevent duplicates)
 }
 
 export const AddModelForm: React.FC<AddModelFormProps> = ({
@@ -62,6 +66,8 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
   isMinting,
   isAuthorizing,
   writeError,
+  availableShard,
+  existingShardUrl,
 }) => {
   const [formData, setFormData] = useState<AddModelFormData>({
     modelName: '',
@@ -76,10 +82,28 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
   const [attestationCheckStatus, setAttestationCheckStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
   const [attestationCheckError, setAttestationCheckError] = useState<string | null>(null);
   const [attestationHash, setAttestationHash] = useState<string | null>(null);
+  const [urlDuplicationError, setUrlDuplicationError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     await onSubmit(formData);
   };
+
+  // Auto-select available shard when joining an existing model
+  React.useEffect(() => {
+    if (availableShard && !formData.shardSelection) {
+      setFormData(prev => ({ ...prev, shardSelection: availableShard }));
+    }
+  }, [availableShard]);
+
+  // Check for duplicate URL when joining existing model
+  React.useEffect(() => {
+    if (existingShardUrl && formData.shardUrl) {
+      const validation = validateUniqueUrl(formData.shardUrl, existingShardUrl);
+      setUrlDuplicationError(validation.valid ? null : validation.error || null);
+    } else {
+      setUrlDuplicationError(null);
+    }
+  }, [formData.shardUrl, existingShardUrl]);
 
   // Auto-verify when shard URL changes (with debounce)
   React.useEffect(() => {
@@ -201,10 +225,11 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
         return !!formData.walletAddress && formData.walletAddress.length > 0;
       case 3: // Shard Selection
         return !!formData.shardSelection;
-      case 4: // TEE Shard URL - valid ONLY if both checks pass
+      case 4: // TEE Shard URL - valid ONLY if all checks pass and no duplicate URL
         return !!formData.shardUrl && 
                healthCheckStatus === 'success' && 
                attestationCheckStatus === 'success' && 
+               !urlDuplicationError &&
                !isVerifying;
       case 5: // Review & Confirm
         return true; // Always valid on review step
@@ -305,102 +330,12 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
 
         {/* Step 3: Shard Selection */}
         <Step>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Select Shard Layer</h3>
-              <p className="text-base text-gray-600">Choose which shard layer to host your model on</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Shard 1 Option */}
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, shardSelection: 'shard1' })}
-                className={`p-6 rounded-xl border-2 transition-all text-left ${
-                  formData.shardSelection === 'shard1'
-                    ? 'border-violet-400 bg-violet-50 shadow-md'
-                    : 'border-gray-200 hover:border-violet-200 bg-white'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      formData.shardSelection === 'shard1'
-                        ? 'border-violet-600 bg-violet-600'
-                        : 'border-gray-300'
-                    }`}>
-                      {formData.shardSelection === 'shard1' && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900">Shard 1</h4>
-                  </div>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    formData.shardSelection === 'shard1'
-                      ? 'bg-violet-200 text-violet-800'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}>
-                    Lower Layers
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mb-3">Host layers 1 to 50 of the model</p>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  <span>Optimized for faster inference</span>
-                </div>
-              </button>
-
-              {/* Shard 2 Option */}
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, shardSelection: 'shard2' })}
-                className={`p-6 rounded-xl border-2 transition-all text-left ${
-                  formData.shardSelection === 'shard2'
-                    ? 'border-violet-400 bg-violet-50 shadow-md'
-                    : 'border-gray-200 hover:border-violet-200 bg-white'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                      formData.shardSelection === 'shard2'
-                        ? 'border-violet-600 bg-violet-600'
-                        : 'border-gray-300'
-                    }`}>
-                      {formData.shardSelection === 'shard2' && (
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <h4 className="text-lg font-bold text-gray-900">Shard 2</h4>
-                  </div>
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    formData.shardSelection === 'shard2'
-                      ? 'bg-violet-200 text-violet-800'
-                      : 'bg-gray-200 text-gray-700'
-                  }`}>
-                    Upper Layers
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mb-3">Host layers 51 to 100 of the model</p>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
-                  </svg>
-                  <span>Balanced workload distribution</span>
-                </div>
-              </button>
-            </div>
-            
-            {!formData.shardSelection && (
-              <p className="text-xs text-amber-600">Please select a shard layer to continue</p>
-            )}
-          </div>
+          <ShardSelection
+            selectedShard={formData.shardSelection}
+            onShardSelect={(shard) => setFormData({ ...formData, shardSelection: shard })}
+            availableShard={availableShard}
+            disabled={isWriting || isConfirming || isMinting || isAuthorizing}
+          />
         </Step>
 
         {/* Step 4: TEE Shard URL */}
@@ -544,6 +479,27 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* URL Duplication Check */}
+                {urlDuplicationError && (
+                  <div className="p-4 rounded-lg border-2 bg-red-50 border-red-300 transition-all">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-semibold text-red-900">
+                          ✗ Duplicate URL Detected
+                        </h4>
+                        <p className="text-xs text-red-700 mt-1">{urlDuplicationError}</p>
+                        <div className="mt-2 p-2 bg-white rounded border border-red-200">
+                          <p className="text-xs font-medium text-gray-700 mb-1">First host's URL:</p>
+                          <code className="text-xs font-mono text-red-700 break-all">{existingShardUrl}</code>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
               </div>
             )}
