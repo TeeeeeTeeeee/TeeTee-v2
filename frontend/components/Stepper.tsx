@@ -119,49 +119,75 @@ export default function Stepper({
       </div>
 
       {/* Content */}
-      <StepContentWrapper
-        isCompleted={isCompleted}
-        currentStep={currentStep}
-        direction={direction}
-        className={`mb-8 ${contentClassName}`}
-      >
-        {stepsArray[currentStep - 1]}
-      </StepContentWrapper>
+      {!isCompleted ? (
+        <>
+          <StepContentWrapper
+            isCompleted={isCompleted}
+            currentStep={currentStep}
+            direction={direction}
+            className={`mb-8 ${contentClassName}`}
+          >
+            {stepsArray[currentStep - 1]}
+          </StepContentWrapper>
 
-      {/* Footer Buttons */}
-      {!isCompleted && (
-        <div className={`flex items-center justify-between ${footerClassName}`}>
-          {/* Left: Cancel button */}
-          {onCancel && (
-            <button
-              onClick={onCancel}
-              className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-              {...cancelButtonProps}
-            >
-              {cancelButtonText}
-            </button>
-          )}
-          
-          {/* Right: Navigation buttons */}
-          <div className="flex gap-3 ml-auto">
-            {currentStep !== 1 && (
+          {/* Footer Buttons */}
+          <div className={`flex items-center justify-between ${footerClassName}`}>
+            {/* Left: Cancel button */}
+            {onCancel && (
               <button
-                onClick={handleBack}
-                className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
-                {...backButtonProps}
+                onClick={onCancel}
+                className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                {...cancelButtonProps}
               >
-                {backButtonText}
+                {cancelButtonText}
               </button>
             )}
-            <button
-              onClick={isLastStep ? handleComplete : handleNext}
-              className="duration-350 flex items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 py-2.5 px-8 text-base font-semibold tracking-tight text-white transition hover:opacity-90 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:opacity-50"
-              {...nextButtonProps}
-            >
-              {isLastStep ? 'Complete' : nextButtonText}
-            </button>
+            
+            {/* Right: Navigation buttons */}
+            <div className="flex gap-3 ml-auto">
+              {currentStep !== 1 && (
+                <button
+                  onClick={handleBack}
+                  className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  {...backButtonProps}
+                >
+                  {backButtonText}
+                </button>
+              )}
+              <button
+                onClick={isLastStep ? handleComplete : handleNext}
+                className="duration-350 flex items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 py-2.5 px-8 text-base font-semibold tracking-tight text-white transition hover:opacity-90 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:opacity-50"
+                {...nextButtonProps}
+              >
+                {isLastStep ? 'Complete' : nextButtonText}
+              </button>
+            </div>
           </div>
-        </div>
+        </>
+      ) : (
+        /* Loading State after completion */
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="flex flex-col items-center justify-center py-16"
+        >
+          <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl border-2 border-violet-300 p-8 max-w-md w-full">
+            <div className="flex flex-col items-center text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-violet-600 mb-6"></div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Processing Your Request</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Please wait while we process your model registration...
+              </p>
+              <div className="flex items-center gap-2 text-xs text-violet-600 font-medium">
+                <svg className="w-4 h-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>This may take a few moments</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
       )}
     </div>
   );

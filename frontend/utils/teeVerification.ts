@@ -111,12 +111,15 @@ export const verifyTEEEndpoint = async (shardUrl: string): Promise<{
   attestationHash?: string;
   error?: string;
 }> => {
+  // Expected attestation hash to verify against
+  const EXPECTED_HASH = 'df99bee2e34b5f653722df6fb654c0d906c57173b6be3fab104815e58ce064bc';
+  
   // Step 1: Health check first
   const healthResult = await healthCheck(shardUrl);
   if (!healthResult.success) {
     return {
       success: false,
-      error: healthResult.error
+      error: healthResult.error || 'Health check failed'
     };
   }
   
@@ -125,7 +128,15 @@ export const verifyTEEEndpoint = async (shardUrl: string): Promise<{
   if (!hashResult.success) {
     return {
       success: false,
-      error: hashResult.error
+      error: hashResult.error || 'Attestation check failed'
+    };
+  }
+  
+  // Step 3: Verify the hash matches the expected value
+  if (hashResult.attestationHash !== EXPECTED_HASH) {
+    return {
+      success: false,
+      error: `Attestation hash mismatch. Expected: ${EXPECTED_HASH}, Got: ${hashResult.attestationHash}`
     };
   }
   

@@ -31,7 +31,7 @@ export const Hero = () => {
                   TeeTee
                 </h1>
                 <h2 className="text-[32px] font-medium text-gray-700 mb-4">
-                  AI inference, reimagined for trust, scale, and resilience.
+                LLM Sharding Across Multiple Verifiable TEE with Decentralized Inference
                 </h2>
               </div>
 

@@ -22,6 +22,7 @@ import { verifyTEEEndpoint } from '../utils/teeVerification';
 interface AddModelForm {
   modelName: string;
   walletAddress: string;
+  shardSelection: string;
   shardUrl: string;
 }
 
@@ -71,6 +72,7 @@ const ModelsPage = () => {
   const [formData, setFormData] = useState<AddModelForm>({
     modelName: '',
     walletAddress: '',
+    shardSelection: '',
     shardUrl: ''
   });
   const [joinFormData, setJoinFormData] = useState<JoinHostForm>({
@@ -93,8 +95,10 @@ const ModelsPage = () => {
   const [modelToStop, setModelToStop] = useState<IncompleteLLM | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [verificationSuccess, setVerificationSuccess] = useState(false);
+  const [healthCheckStatus, setHealthCheckStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
+  const [healthCheckError, setHealthCheckError] = useState<string | null>(null);
+  const [attestationCheckStatus, setAttestationCheckStatus] = useState<'idle' | 'checking' | 'success' | 'error'>('idle');
+  const [attestationCheckError, setAttestationCheckError] = useState<string | null>(null);
   const [attestationHash, setAttestationHash] = useState<string | null>(null);
 
   // Smart contract hooks
@@ -226,12 +230,15 @@ const ModelsPage = () => {
     setFormData({
       modelName: '',
       walletAddress: '',
+      shardSelection: '',
       shardUrl: ''
     });
     setCurrentStep(1);
     setIsVerifying(false);
-    setVerificationError(null);
-    setVerificationSuccess(false);
+    setHealthCheckStatus('idle');
+    setHealthCheckError(null);
+    setAttestationCheckStatus('idle');
+    setAttestationCheckError(null);
     setAttestationHash(null);
     resetWrite();
   };
@@ -247,29 +254,115 @@ const ModelsPage = () => {
     });
   };
 
-  // Handle step change with verification on Step 3
-  const handleStepChange = async (newStep: number) => {
-    // If moving from step 3 to step 4, verify TEE endpoint first
-    if (currentStep === 3 && newStep === 4 && formData.shardUrl) {
-      setIsVerifying(true);
-      setVerificationError(null);
-      setVerificationSuccess(false);
-      
-      const result = await verifyTEEEndpoint(formData.shardUrl);
-      
-      if (result.success && result.attestationHash) {
-        setAttestationHash(result.attestationHash);
-        setVerificationSuccess(true);
-        setIsVerifying(false);
-        setCurrentStep(newStep);
-      } else {
-        setVerificationError(result.error || 'Failed to verify TEE endpoint');
-        setIsVerifying(false);
-        // Stay on step 3 (error message will be shown)
-      }
-    } else {
-      setCurrentStep(newStep);
+  // Auto-verify when shard URL changes (with debounce)
+  useEffect(() => {
+    if (!formData.shardUrl || currentStep !== 4) {
+      setHealthCheckStatus('idle');
+      setAttestationCheckStatus('idle');
+      setHealthCheckError(null);
+      setAttestationCheckError(null);
+      setAttestationHash(null);
+      return;
     }
+
+    const verifyEndpoint = async () => {
+      setIsVerifying(true);
+      setHealthCheckStatus('checking');
+      setAttestationCheckStatus('idle');
+      setHealthCheckError(null);
+      setAttestationCheckError(null);
+      setAttestationHash(null);
+
+      try {
+        const baseUrl = formData.shardUrl.endsWith('/') ? formData.shardUrl : `${formData.shardUrl}/`;
+        
+        // Step 1: Health Check
+        const healthResponse = await fetch(`${baseUrl}health`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!healthResponse.ok) {
+          setHealthCheckStatus('error');
+          setHealthCheckError('Health check failed. TEE endpoint is not accessible.');
+          setIsVerifying(false);
+          return;
+        }
+
+        setHealthCheckStatus('success');
+
+        // Step 2: Attestation Check
+        setAttestationCheckStatus('checking');
+        
+        const attestResponse = await fetch(`${baseUrl}attest/quick`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!attestResponse.ok) {
+          setAttestationCheckStatus('error');
+          setAttestationCheckError('Attestation request failed.');
+          setIsVerifying(false);
+          return;
+        }
+
+        const attestationData = await attestResponse.json();
+
+        if (!attestationData.success) {
+          setAttestationCheckStatus('error');
+          setAttestationCheckError('Attestation was not successful.');
+          setIsVerifying(false);
+          return;
+        }
+
+        if (!attestationData.note) {
+          setAttestationCheckStatus('error');
+          setAttestationCheckError('Attestation note not found.');
+          setIsVerifying(false);
+          return;
+        }
+
+        // Generate SHA-256 hash of the note
+        const encoder = new TextEncoder();
+        const data = encoder.encode(attestationData.note);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        // Verify hash matches expected value
+        const EXPECTED_HASH = 'df99bee2e34b5f653722df6fb654c0d906c57173b6be3fab104815e58ce064bc';
+        
+        if (hashHex !== EXPECTED_HASH) {
+          setAttestationCheckStatus('error');
+          setAttestationCheckError(`Hash mismatch. Expected: ${EXPECTED_HASH}, Got: ${hashHex}`);
+          setIsVerifying(false);
+          return;
+        }
+
+        setAttestationHash(hashHex);
+        setAttestationCheckStatus('success');
+        setIsVerifying(false);
+
+      } catch (error: any) {
+        if (healthCheckStatus === 'checking') {
+          setHealthCheckStatus('error');
+          setHealthCheckError(error.message || 'Failed to connect to health endpoint.');
+        } else {
+          setAttestationCheckStatus('error');
+          setAttestationCheckError(error.message || 'Failed to verify attestation.');
+        }
+        setIsVerifying(false);
+      }
+    };
+
+    // Debounce the verification to avoid too many requests
+    const timeoutId = setTimeout(verifyEndpoint, 800);
+    return () => clearTimeout(timeoutId);
+  }, [formData.shardUrl, currentStep]);
+
+  // Handle step change
+  const handleStepChange = async (newStep: number) => {
+    setCurrentStep(newStep);
   };
 
   // Validation logic for each step
@@ -279,9 +372,14 @@ const ModelsPage = () => {
         return !!formData.modelName;
       case 2: // Wallet Address
         return !!formData.walletAddress && formData.walletAddress.length > 0;
-      case 3: // Shard URL
-        return !!formData.shardUrl && formData.shardUrl.length > 0;
-      case 4: // Review & Confirm
+      case 3: // Shard Selection
+        return !!formData.shardSelection;
+      case 4: // TEE Shard URL - valid ONLY if both checks pass
+        return !!formData.shardUrl && 
+               healthCheckStatus === 'success' && 
+               attestationCheckStatus === 'success' && 
+               !isVerifying;
+      case 5: // Review & Confirm
         return true; // Always valid on review step
       default:
         return false;
@@ -571,17 +669,17 @@ const ModelsPage = () => {
               onStepChange={handleStepChange}
               onFinalStepCompleted={handleAddModel}
               backButtonText="Previous"
-              nextButtonText={currentStep === 3 ? 'Verify & Continue' : 'Next'}
+              nextButtonText="Next"
               cancelButtonText="Cancel"
             onCancel={resetForm}
               nextButtonProps={{
-                disabled: !isStepValid(currentStep) || isVerifying || isWriting || isConfirming || isMinting || isAuthorizing
+                disabled: !isStepValid(currentStep) || isWriting || isConfirming || isMinting || isAuthorizing
               }}
               backButtonProps={{
-                disabled: isVerifying || isWriting || isConfirming || isMinting || isAuthorizing
+                disabled: isWriting || isConfirming || isMinting || isAuthorizing
               }}
               cancelButtonProps={{
-                disabled: isVerifying || isWriting || isConfirming || isMinting || isAuthorizing
+                disabled: isWriting || isConfirming || isMinting || isAuthorizing
               }}
             >
               {/* Step 1: Model Selection */}
@@ -648,7 +746,95 @@ const ModelsPage = () => {
                 </div>
               </Step>
 
-              {/* Step 3: TEE Shard URL */}
+              {/* Step 3: Shard Selection */}
+              <Step>
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 mb-1">Select Shard Layer</h3>
+                    <p className="text-xs text-gray-600">Choose which shard layer to host your model on</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Shard 1 Option */}
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, shardSelection: 'shard1' })}
+                      className={`p-5 rounded-xl border-2 transition-all text-left ${
+                        formData.shardSelection === 'shard1'
+                          ? 'border-violet-400 bg-violet-50 shadow-md'
+                          : 'border-gray-200 hover:border-violet-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            formData.shardSelection === 'shard1'
+                              ? 'border-violet-600 bg-violet-600'
+                              : 'border-gray-300'
+                          }`}>
+                            {formData.shardSelection === 'shard1' && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <h4 className="text-base font-bold text-gray-900">Shard 1</h4>
+                        </div>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          formData.shardSelection === 'shard1'
+                            ? 'bg-violet-200 text-violet-800'
+                            : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          Lower
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">Host layers 1 to 50 of the model</p>
+                    </button>
+
+                    {/* Shard 2 Option */}
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, shardSelection: 'shard2' })}
+                      className={`p-5 rounded-xl border-2 transition-all text-left ${
+                        formData.shardSelection === 'shard2'
+                          ? 'border-violet-400 bg-violet-50 shadow-md'
+                          : 'border-gray-200 hover:border-violet-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            formData.shardSelection === 'shard2'
+                              ? 'border-violet-600 bg-violet-600'
+                              : 'border-gray-300'
+                          }`}>
+                            {formData.shardSelection === 'shard2' && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                          <h4 className="text-base font-bold text-gray-900">Shard 2</h4>
+                        </div>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          formData.shardSelection === 'shard2'
+                            ? 'bg-violet-200 text-violet-800'
+                            : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          Upper
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">Host layers 51 to 100 of the model</p>
+                    </button>
+                  </div>
+                  
+                  {!formData.shardSelection && (
+                    <p className="text-xs text-amber-600">Please select a shard layer to continue</p>
+                  )}
+                </div>
+              </Step>
+
+              {/* Step 4: TEE Shard URL */}
               <Step>
                 <div className="space-y-4">
                   <div>
@@ -673,72 +859,123 @@ const ModelsPage = () => {
                     </p>
                   </div>
 
-                  {/* Verification Loading State */}
-                  {isVerifying && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
-                        <div>
-                          <h4 className="text-xs font-semibold text-gray-900">Verifying TEE Endpoint...</h4>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            Checking health and attestation endpoints
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Verification Success State */}
-                  {verificationSuccess && attestationHash && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div className="flex-1">
-                          <h4 className="text-xs font-semibold text-green-900">✓ TEE Verification Successful</h4>
-                          <p className="text-xs text-green-700 mt-0.5">
-                            Health check passed and attestation verified.
-                          </p>
-                          <div className="mt-2 p-2 bg-white rounded border border-green-200">
-                            <p className="text-xs font-medium text-gray-700 mb-1">Attestation Hash (SHA-256):</p>
-                            <code className="text-xs font-mono text-green-700 break-all">{attestationHash}</code>
+                  {/* Verification Status - Two Separate Checks */}
+                  {formData.shardUrl && (
+                    <div className="space-y-3">
+                      {/* Health Check Status */}
+                      <div className={`p-3 rounded-lg border-2 transition-all ${
+                        healthCheckStatus === 'checking'
+                          ? 'bg-yellow-50 border-yellow-300'
+                          : healthCheckStatus === 'success'
+                          ? 'bg-green-50 border-green-300'
+                          : healthCheckStatus === 'error'
+                          ? 'bg-red-50 border-red-300'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        <div className="flex items-start gap-2">
+                          {healthCheckStatus === 'checking' ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 flex-shrink-0 mt-0.5"></div>
+                          ) : healthCheckStatus === 'success' ? (
+                            <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          ) : healthCheckStatus === 'error' ? (
+                            <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                          <div className="flex-1">
+                            <h4 className={`text-xs font-semibold ${
+                              healthCheckStatus === 'checking'
+                                ? 'text-yellow-900'
+                                : healthCheckStatus === 'success'
+                                ? 'text-green-900'
+                                : healthCheckStatus === 'error'
+                                ? 'text-red-900'
+                                : 'text-gray-600'
+                            }`}>
+                              {healthCheckStatus === 'checking'
+                                ? '1. Checking Health Endpoint...'
+                                : healthCheckStatus === 'success'
+                                ? '✓ 1. Health Check Passed'
+                                : healthCheckStatus === 'error'
+                                ? '✗ 1. Health Check Failed'
+                                : '1. Health Check - Waiting'}
+                            </h4>
+                            {healthCheckError && (
+                              <p className="text-xs text-red-700 mt-0.5">{healthCheckError}</p>
+                            )}
+                            {healthCheckStatus === 'success' && (
+                              <p className="text-xs text-green-700 mt-0.5">Endpoint is accessible and responding</p>
+                            )}
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Verification Error State */}
-                  {verificationError && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <h4 className="text-xs font-semibold text-red-900">Verification Failed</h4>
-                          <p className="text-xs text-red-700 mt-0.5">{verificationError}</p>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              setVerificationError(null);
-                              setIsVerifying(true);
-                              const result = await verifyTEEEndpoint(formData.shardUrl);
-                              if (result.success && result.attestationHash) {
-                                setAttestationHash(result.attestationHash);
-                                setVerificationSuccess(true);
-                              } else {
-                                setVerificationError(result.error || 'Failed to verify TEE endpoint');
-                              }
-                              setIsVerifying(false);
-                            }}
-                            className="mt-2 text-xs font-medium text-red-600 hover:text-red-700 underline"
-                          >
-                            Try Again
-                          </button>
+                      {/* Attestation Check Status */}
+                      <div className={`p-3 rounded-lg border-2 transition-all ${
+                        attestationCheckStatus === 'checking'
+                          ? 'bg-yellow-50 border-yellow-300'
+                          : attestationCheckStatus === 'success'
+                          ? 'bg-green-50 border-green-300'
+                          : attestationCheckStatus === 'error'
+                          ? 'bg-red-50 border-red-300'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}>
+                        <div className="flex items-start gap-2">
+                          {attestationCheckStatus === 'checking' ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600 flex-shrink-0 mt-0.5"></div>
+                          ) : attestationCheckStatus === 'success' ? (
+                            <svg className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          ) : attestationCheckStatus === 'error' ? (
+                            <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                          <div className="flex-1">
+                            <h4 className={`text-xs font-semibold ${
+                              attestationCheckStatus === 'checking'
+                                ? 'text-yellow-900'
+                                : attestationCheckStatus === 'success'
+                                ? 'text-green-900'
+                                : attestationCheckStatus === 'error'
+                                ? 'text-red-900'
+                                : 'text-gray-600'
+                            }`}>
+                              {attestationCheckStatus === 'checking'
+                                ? '2. Verifying Attestation Note...'
+                                : attestationCheckStatus === 'success'
+                                ? '✓ 2. Model Hash Verified'
+                                : attestationCheckStatus === 'error'
+                                ? '✗ 2. Attestation Note Failed'
+                                : '2. Attestation Check - Waiting'}
+                            </h4>
+                            {attestationCheckError && (
+                              <p className="text-xs text-red-700 mt-0.5">{attestationCheckError}</p>
+                            )}
+                            {attestationCheckStatus === 'success' && attestationHash && (
+                              <div className="mt-2">
+                                <p className="text-xs text-green-700 mb-1">Model Hash matches expected value</p>
+                                <div className="p-2 bg-white rounded border border-green-200">
+                                  <p className="text-xs font-medium text-gray-700 mb-1">Attestation Hash:</p>
+                                  <code className="text-xs font-mono text-green-700 break-all">{attestationHash}</code>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+
                     </div>
                   )}
 
@@ -748,7 +985,7 @@ const ModelsPage = () => {
                 </div>
               </Step>
 
-              {/* Step 4: Review & Confirm */}
+              {/* Step 5: Review & Confirm */}
               <Step>
                 <div className="space-y-4">
                   <div>
@@ -768,6 +1005,14 @@ const ModelsPage = () => {
                         <span className="text-xs text-gray-600">Wallet:</span>
                         <span className="text-xs font-mono text-gray-900">
                           {formData.walletAddress ? `${formData.walletAddress.slice(0, 10)}...${formData.walletAddress.slice(-8)}` : 'Not provided'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-600">Shard Layer:</span>
+                        <span className="text-xs font-semibold text-gray-900">
+                          {formData.shardSelection === 'shard1' ? 'Shard 1 (Layers 1-50)' : 
+                           formData.shardSelection === 'shard2' ? 'Shard 2 (Layers 51-100)' : 
+                           'Not selected'}
                         </span>
                       </div>
                       <div className="flex flex-col gap-1">
@@ -795,14 +1040,24 @@ const ModelsPage = () => {
                   
                   {/* Transaction Status */}
                   {(isWriting || isConfirming || isMinting || isAuthorizing) && (
-                    <div className="flex items-center gap-2 text-xs text-gray-600 p-2.5 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-violet-400"></div>
-                      <span>
-                        {isWriting ? 'Submitting transaction...' : 
-                         isConfirming ? 'Confirming registration...' : 
-                         isMinting ? 'Minting INFT token...' : 
-                         isAuthorizing ? 'Authorizing access...' : 'Processing...'}
-                      </span>
+                    <div className="p-3 bg-blue-50 rounded-lg border-2 border-blue-300">
+                      <div className="flex items-start gap-3">
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-violet-600 flex-shrink-0 mt-0.5"></div>
+                        <div className="flex-1">
+                          <h4 className="text-sm font-semibold text-blue-900 mb-1">
+                            {isWriting ? '⏳ Waiting for Transaction Signature' : 
+                             isConfirming ? '⏳ Transaction Confirming...' : 
+                             isMinting ? '⏳ Minting INFT Token...' : 
+                             isAuthorizing ? '⏳ Authorizing Access...' : '⏳ Processing...'}
+                          </h4>
+                          <p className="text-xs text-blue-700">
+                            {isWriting ? 'Please sign the transaction in your wallet to continue' : 
+                             isConfirming ? 'Your transaction is being confirmed on the blockchain...' : 
+                             isMinting ? 'Creating your INFT token...' : 
+                             isAuthorizing ? 'Setting up access permissions...' : 'Please wait...'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                   
