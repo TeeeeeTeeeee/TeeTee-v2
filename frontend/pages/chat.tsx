@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount } from 'wagmi';
 import { encode, isWithinTokenLimit } from 'gpt-tokenizer';
+import { MessageSquare } from 'lucide-react';
 import {
   useCheckUserCredits,
   useCheckBundlePrice,
@@ -449,9 +450,117 @@ const ChatPage = () => {
       {/* New Navbar */}
       <Navbar />
       
+      {/* Left Sidebar - ChatGPT Style */}
+      <div className="fixed left-0 top-20 h-[calc(100vh-80px)] w-64 bg-white border-r border-gray-200 flex flex-col z-[999]">
+        {/* Model Selection at the top */}
+        <div className="p-4 border-b border-gray-200">
+          <div className="relative">
+            <button
+              onClick={() => setShowModelDropdown(!showModelDropdown)}
+              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <span>{selectedModel}</span>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showModelDropdown && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
+                {models.map((model) => (
+                  <button
+                    key={model}
+                    onClick={() => {
+                      setSelectedModel(model);
+                      setShowModelDropdown(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg transition-colors"
+                  >
+                    {model}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {/* New Chat Button */}
+          <button
+            onClick={startNewChat}
+            className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-violet-400 to-purple-300 hover:opacity-90 rounded-lg transition-opacity"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>New Chat</span>
+          </button>
+        </div>
+        
+        {/* Chat History */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-2">
+            <h3 className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              History
+            </h3>
+            {isLoadingSessions ? (
+              <div className="p-4 text-center text-gray-500 text-sm">
+                Loading...
+              </div>
+            ) : conversations.length > 0 ? (
+              <div className="space-y-1">
+                {conversations.map((chat) => (
+                  <div key={chat._id} className="relative group">
+                    <button
+                      onClick={() => loadChatSession(chat)}
+                      disabled={isLoadingMessages}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                        activeConversation === chat._id
+                          ? 'bg-violet-100 text-violet-900'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      } disabled:opacity-50`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <MessageSquare size={16} className="mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate font-medium">
+                            {chat.preview 
+                              ? (chat.preview.length > 30 ? chat.preview.substring(0, 30) + '...' : chat.preview)
+                              : chat.filename
+                            }
+                          </div>
+                          <div className="text-xs text-gray-500 mt-0.5 truncate">
+                            {chat.messageCount} msgs • {new Date(chat.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChatToDelete(chat);
+                        setShowDeleteModal(true);
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete chat"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 text-center text-gray-500">
+                <p className="text-sm">No conversations yet</p>
+                <p className="text-xs mt-1">Start chatting!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1001]">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Chat?</h3>
             <p className="text-gray-600 mb-6">
@@ -475,249 +584,10 @@ const ChatPage = () => {
         </div>
       )}
 
-      {/* Sidebar */}
-      <motion.div 
-        className="fixed left-0 top-20 bg-white flex flex-col h-[calc(100vh-80px)] border-r border-gray-200"
-        animate={{
-          width: isOpen ? "260px" : "60px"
-        }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
-      >
-        {/* Sidebar Toggle Button */}
-        <div className="p-4 flex items-center justify-between border-b border-gray-200">
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="p-1.5 hover:bg-gray-100 rounded-md transition-colors flex-shrink-0"
-          >
-            <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          {isOpen && <span className="text-sm font-medium text-gray-700">Chat History</span>}
-        </div>
+      {/* Main Chat Area - With left sidebar offset */}
+      <main className="ml-64 w-[calc(100%-256px)] h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20">
 
-        {/* Tokens + Buy / INFT Status */}
-        {isOpen && (
-          <div className="px-4 py-2">
-            <div className="flex flex-col gap-2">
-              {/* Token Display */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-violet-200 to-violet-200 text-black rounded-full text-sm">
-                <span>Tokens: {myCredits?.toString?.() ?? '-'}</span>
-                <button
-                  onClick={handleBuyBundle}
-                  disabled={!isConnected || !bundlePrice || isBuying}
-                  className="ml-2 px-2 py-0.5 bg-violet-500 text-white rounded-full hover:bg-violet-600 disabled:opacity-50"
-                  title="Buy 1 bundle"
-                >
-                  {isBuying ? 'Buying…' : 'Buy'}
-                </button>
-              </div>
-              
-              {/* INFT Toggle - Only show if user has INFT */}
-              {hasINFT && isConnected && (
-                <label className="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg text-xs cursor-pointer hover:bg-green-100 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={useINFTInference}
-                    onChange={(e) => setUseINFTInference(e.target.checked)}
-                    className="w-4 h-4 text-green-600 bg-white border-green-300 rounded focus:ring-green-500 focus:ring-2 cursor-pointer"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3.5 h-3.5 flex-shrink-0 text-green-700" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span className="font-medium text-green-800">
-                      {useINFTInference ? 'Using INFT (No tokens)' : 'Use INFT Inference'}
-                    </span>
-                  </div>
-                </label>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* New Chat Button */}
-        <div className="p-2">
-          <button 
-            onClick={startNewChat}
-            className="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-3"
-            title={!isOpen ? "New chat" : ""}
-          >
-            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            {isOpen && <span>New chat</span>}
-          </button>
-        </div>
-
-        {/* Chat History */}
-        <div className="flex-1 overflow-y-auto px-2">
-          <div className="flex flex-col gap-1 min-h-0">
-            {isLoadingSessions ? (
-              isOpen && (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                  <p className="text-sm">Loading sessions...</p>
-                </div>
-              )
-            ) : conversations.length > 0 ? (
-              conversations.map((chat) => (
-                <div key={chat._id} className="relative group">
-                  <button
-                    onClick={() => loadChatSession(chat)}
-                    disabled={isLoadingMessages}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 transition-colors ${
-                      activeConversation === chat._id
-                        ? 'bg-violet-100 text-violet-900'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    } disabled:opacity-50`}
-                    title={!isOpen ? chat.filename : ""}
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                    </svg>
-                    {isOpen && (
-                      <div className="flex-1 min-w-0">
-                        <div className="truncate font-medium">
-                          {chat.preview 
-                            ? (chat.preview.length > 40 ? chat.preview.substring(0, 40) + '...' : chat.preview)
-                            : chat.filename
-                          }
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {chat.messageCount} messages • {new Date(chat.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                    )}
-                  </button>
-                  {isOpen && (
-                    <button
-                      onClick={(e) => handleDeleteClick(e, chat)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Delete chat"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              ))
-            ) : (
-              isOpen && !isLoadingSessions && (
-                <div className="flex flex-col items-center justify-center py-8 text-gray-500">
-                  <p className="text-sm">No conversations yet.</p>
-                  <p className="text-xs mt-1">Start chatting and save your transcript!</p>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* Connect Wallet Button */}
-        <div className="border-t border-gray-200 p-2 mt-auto">
-          <ConnectButton.Custom>
-            {({
-              account,
-              chain,
-              openAccountModal,
-              openChainModal,
-              openConnectModal,
-              mounted,
-            }) => {
-              const ready = mounted;
-              const connected = ready && account && chain;
-
-              return (
-                <div
-                  {...(!ready && {
-                    'aria-hidden': true,
-                    style: { opacity: 0, pointerEvents: 'none', userSelect: 'none' },
-                  })}
-                >
-                  {(() => {
-                    if (!connected) {
-                      return (
-                        <button 
-                          onClick={openConnectModal}
-                          className="w-full text-white px-3 py-2.5 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-3"
-                          style={{
-                            background: 'linear-gradient(to right, #a78bfa, #d8b4fe)'
-                          }}
-                          title={!isOpen ? "Connect Wallet" : ""}
-                        >
-                          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
-                          {isOpen && <span>Connect Wallet</span>}
-                        </button>
-                      );
-                    }
-
-                    return (
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={openAccountModal}
-                          className="w-full text-left text-gray-700 hover:bg-gray-50 px-3 py-2.5 rounded-lg text-sm flex items-center gap-3"
-                          title={!isOpen ? account.displayName : ""}
-                        >
-                          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
-                          {isOpen && <span>{account.displayName}</span>}
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            }}
-          </ConnectButton.Custom>
-        </div>
-      </motion.div>
-
-      {/* Main Chat Area */}
-      <motion.main
-        className="flex-1 h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20"
-        animate={{
-          marginLeft: isOpen ? "260px" : "60px",
-          width: `calc(100% - ${isOpen ? "260px" : "60px"})`
-        }}
-        transition={{ duration: 0.3, ease: 'easeInOut' }}
-      >
-        {/* Top Bar with Model Selection */}
-        <div className="p-4 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            {/* Model Selection Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowModelDropdown(!showModelDropdown)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                <span>{selectedModel}</span>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showModelDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                  {models.map((model) => (
-                    <button
-                      key={model}
-                      onClick={() => {
-                        setSelectedModel(model);
-                        setShowModelDropdown(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg"
-                    >
-                      {model}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
+        {/* Centered Chat Container */}
         <div className="flex-1 flex flex-col overflow-auto">
           <div className="max-w-4xl mx-auto px-4 py-8 flex-1 flex flex-col w-full">
             {/* Loading state */}
@@ -750,20 +620,20 @@ const ChatPage = () => {
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center">
-                <h1 className="text-3xl font-bold text-gray-900 flex items-baseline">
-                  <span className="text-2xl mr-2">Welcome to</span> 
-                  <span className="text-4xl bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-pacifico)' }}>
+                <h1 className="text-5xl font-bold text-gray-900 mb-4">
+                  <span className="text-3xl mr-2">Welcome to</span> 
+                  <span className="text-6xl bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text" style={{ fontFamily: 'var(--font-pacifico)' }}>
                     TeeTee
                   </span>
                 </h1>
-                <p className="mt-2 text-gray-600">This is a secure AI assistant running in a TEE.</p>
+                <p className="text-lg text-gray-600">This is a secure AI assistant running in a TEE.</p>
               </div>
             )}
           
             {/* Input Area */}
             <div className="mt-auto pb-6">
               <div className="relative w-full max-w-3xl mx-auto">
-                <div className="flex items-center bg-white border border-gray-200 rounded-full px-4 py-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center bg-white border border-gray-200 rounded-full px-4 py-3 shadow-lg hover:shadow-xl transition-shadow">
                   {/* File Attach Icon */}
                   <button className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -811,7 +681,7 @@ const ChatPage = () => {
 
                 {/* Auto-save indicator */}
                 {isSavingToStorage && (
-                  <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                  <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -820,7 +690,7 @@ const ChatPage = () => {
                   </div>
                 )}
                 {!isSavingToStorage && messages.length > 0 && isConnected && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+                  <div className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">
                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
@@ -831,7 +701,7 @@ const ChatPage = () => {
             </div>
           </div>
         </div>
-      </motion.main>
+      </main>
     </div>
   );
 };
