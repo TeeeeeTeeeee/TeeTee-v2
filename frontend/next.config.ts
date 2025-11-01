@@ -18,6 +18,7 @@ const nextConfig: NextConfig = {
     config.resolve.alias["@splinetool/react-spline"] = require.resolve("./utils/emptyModule.tsx");
     return config;
   },
+  devIndicators: false,
 };
 
 export default nextConfig;
