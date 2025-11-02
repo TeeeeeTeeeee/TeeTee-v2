@@ -47,6 +47,31 @@ const AVAILABLE_MODELS = [
   'DeepSeek-V2-Lite'
 ];
 
+// Docker compose content for hosting guide
+const DOCKER_COMPOSE_CONTENT = `version: '3.8'
+
+services:
+  llm-server:
+    image: derek2403/teetee-llm-server:latest
+    container_name: teetee-llm-server
+    ports:
+      - "3001:3001"
+    environment:
+      - PHALA_API_KEY=\${PHALA_API_KEY}
+      - PORT=3001
+      - NODE_ENV=production
+    restart: unless-stopped
+    volumes:
+      - /var/run/tappd.sock:/var/run/tappd.sock`;
+
+// Slideshow images (16:9 ratio) - Add your image URLs here
+const GUIDE_SLIDES = [
+  '/images/guide/1.png',
+  '/images/guide/2.png',
+  '/images/guide/3.png',
+  '/images/guide/4.png',
+];
+
 // LLM Icon mapping - Maps model names to image URLs
 const LLM_ICONS: Record<string, string> = {
   'TinyLlama-1.1B-Chat-v1.0': '/images/tinyllama.png',
@@ -99,6 +124,9 @@ const ModelsPage = () => {
   const [stoppingModelId, setStoppingModelId] = useState<number | null>(null);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
   const [modelToStop, setModelToStop] = useState<IncompleteLLM | null>(null);
+  const [showHostingGuide, setShowHostingGuide] = useState(false);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
@@ -458,6 +486,26 @@ const ModelsPage = () => {
     }
   };
 
+  // Handle copying docker compose content
+  const handleCopyDockerCompose = async () => {
+    try {
+      await navigator.clipboard.writeText(DOCKER_COMPOSE_CONTENT);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  // Handle slideshow navigation
+  const handleNextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % GUIDE_SLIDES.length);
+  };
+
+  const handlePrevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + GUIDE_SLIDES.length) % GUIDE_SLIDES.length);
+  };
+
   // Handle pausing a model
   const handlePauseModel = async (modelId: number) => {
     if (!connectedAddress) {
@@ -547,23 +595,35 @@ const ModelsPage = () => {
             </div>
             
             {/* Add Model Button - Always visible */}
-            <button
-              onClick={() => setShowAddForm(!showAddForm)}
-              className={`px-6 py-3 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
-                showAddForm 
-                  ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
-                  : 'bg-gradient-to-r from-violet-400 to-purple-300 text-white hover:opacity-90'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                {showAddForm ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                )}
-              </svg>
-              {showAddForm ? 'Cancel' : 'Add Model'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowHostingGuide(true)}
+                className="p-3 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 transition-all"
+                title="How to host a model on Phala Cloud"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              
+              <button
+                onClick={() => setShowAddForm(!showAddForm)}
+                className={`px-6 py-3 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                  showAddForm 
+                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
+                    : 'bg-gradient-to-r from-violet-400 to-purple-300 text-white hover:opacity-90'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  {showAddForm ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  )}
+                </svg>
+                {showAddForm ? 'Cancel' : 'Add Model'}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1304,6 +1364,160 @@ const ModelsPage = () => {
                     </p>
                   </motion.div>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        
+        {/* Hosting Guide Modal */}
+        {showHostingGuide && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={() => setShowHostingGuide(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-violet-500 to-purple-500 px-6 py-4 text-white sticky top-0 z-10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">How to Host a Model on Phala Cloud</h2>
+                    <p className="text-violet-100 text-sm mt-1">Follow these steps to set up your TEE environment</p>
+                  </div>
+                  <button
+                    onClick={() => setShowHostingGuide(false)}
+                    className="text-white hover:text-violet-100 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6 space-y-6">
+                {/* Docker Compose Copy Section */}
+                <div className="bg-gray-100 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Copy this docker compose file <span className="text-red-500 text-xs font-italic mt-1">(will be used in next step)</span>
+                    </h3>
+                    <button
+                      onClick={handleCopyDockerCompose}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        isCopied
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-violet-600 text-white hover:bg-violet-700'
+                      }`}
+                    >
+                      {isCopied ? (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Copied!
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                          Copy
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Slideshow Section */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Step-by-Step Guide
+                  </h3>
+                  
+                  {/* Slideshow */}
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                    {/* Image */}
+                    <div className="w-full h-full flex items-center justify-center">
+                      <img
+                        src={GUIDE_SLIDES[currentSlide]}
+                        alt={`Guide step ${currentSlide + 1}`}
+                        className="max-w-full max-h-full object-contain"
+                        onError={(e) => {
+                          // Fallback to placeholder if image fails to load
+                          e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"%3E%3Crect fill="%23e5e7eb" width="800" height="450"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" fill="%236b7280"%3ESlide ' + (currentSlide + 1) + '%3C/text%3E%3C/svg%3E';
+                        }}
+                      />
+                    </div>
+
+                    {/* Previous Button */}
+                    <button
+                      onClick={handlePrevSlide}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 p-3 rounded-full shadow-lg transition-all"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Next Button */}
+                    <button
+                      onClick={handleNextSlide}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 p-3 rounded-full shadow-lg transition-all"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+
+                    {/* Slide Counter */}
+                    <div className="absolute top-4 right-4 bg-gray-800 bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
+                      {currentSlide + 1} / {GUIDE_SLIDES.length}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer with helpful links */}
+                <div className="bg-violet-50 rounded-lg p-4 border border-violet-200">
+                  <p className="text-sm text-violet-900 font-medium mb-2">Need more help?</p>
+                  <div className="flex flex-wrap gap-3">
+                    <a
+                      href="https://docs.phala.network"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-violet-700 hover:text-violet-900 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      Documentation
+                    </a>
+                    <a
+                      href="https://discord.gg/phala"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm text-violet-700 hover:text-violet-900 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                      </svg>
+                      Join Discord
+                    </a>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
