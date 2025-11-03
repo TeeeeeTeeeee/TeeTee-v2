@@ -4,27 +4,31 @@ import React from "react";
 import Image from "next/image";
 
 export const BrandCarousel = () => {
-  // Brand logos for carousel
-  const brandsRow1 = [
+  // All unique brand logos
+  const allBrands = [
     { name: 'Stripe', logo: '/logos/stripe.png' },
     { name: 'Notion', logo: '/logos/notion.png' },
     { name: 'Figma', logo: '/logos/figma.png' },
     { name: 'Databricks', logo: '/logos/databricks.png' },
-  ];
-
-  const brandsRow2 = [
     { name: 'GitHub', logo: '/logos/github.png' },
+    { name: 'OpenAI', logo: '/logos/openAI.png' },
     { name: 'MongoDB', logo: '/logos/mongodb.png' },
     { name: 'Vercel', logo: '/logos/vercel.png' },
     { name: 'Zapier', logo: '/logos/zapier.png' },
-  ];
-
-  const brandsRow3 = [
     { name: 'GitLab', logo: '/logos/gitlab.png' },
     { name: 'Datadog', logo: '/logos/datadog.png' },
     { name: 'Atlassian', logo: '/logos/atlassian.png' },
-    { name: 'Sentry', logo: '/logos/sentry.png' },
+    { name: 'Elasic', logo: '/logos/elastic.png' },
+    { name: 'Kubernetes', logo: '/logos/kubernetes.png' },
+    { name: 'Pagerduty', logo: '/logos/pagerduty.png' },
+    { name: 'Terraform', logo: '/logos/terraform.png' },
+    { name: 'Newrelic', logo: '/logos/newrelic.png' },
   ];
+
+  // Distribute brands across 3 rows - 5 brands each
+  const brandsRow1 = [allBrands[0], allBrands[1], allBrands[2], allBrands[3], allBrands[4]];
+  const brandsRow2 = [allBrands[5], allBrands[6], allBrands[16], allBrands[8], allBrands[9]];
+  const brandsRow3 = [allBrands[10], allBrands[11], allBrands[12], allBrands[13], allBrands[14]];
 
   return (
     <section className="relative z-20 py-16 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
