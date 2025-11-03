@@ -5,25 +5,25 @@
     "rpcUrl": "https://evmrpc-testnet.0g.ai",
     "explorer": "https://chainscan-galileo.0g.ai"
   },
-  "timestamp": "2025-11-03T18:36:44.073Z",
+  "timestamp": "2025-11-03T18:17:15.310Z",
   "deployer": "0x9787cfF89D30bB6Ae87Aaad9B3a02E77B5caA8f1",
   "contracts": {
     "oracle": {
-      "address": "0x41320456128a8B2D189EBBF405c9eF125c560eD0",
+      "address": "0xAa61dB5213C33fdEF61e4028e0c859Cd22AD8F86",
       "name": "OracleStub",
-      "txHash": "0x80f80b8a4ed431857ce7c8757022a0d22fa79fb80f69d6a1512ffce010b8d412"
+      "txHash": "0x40a882980b50fbca30cbe427a51c1f8bd6422898f1e65dad2ce336b2c0744794"
     },
     "dataVerifier": {
-      "address": "0xC4176Fc4488032f8eBF02A88B7E939f0eE1F3709",
+      "address": "0x347e390BbFF256199159Ca1BBFbF044D7cAA2bD4",
       "name": "DataVerifierAdapterFixed",
-      "txHash": "0x7c7aa14bd06b93e4f39eeed001dc11772bf58884070e586ae61ef3e627a78d61",
-      "oracleAddress": "0x41320456128a8B2D189EBBF405c9eF125c560eD0"
+      "txHash": "0xd90c4f2f66e57a375ca7e3d32d05015b878936674e753dda780f7c28e75acf47",
+      "oracleAddress": "0xAa61dB5213C33fdEF61e4028e0c859Cd22AD8F86"
     },
     "inft": {
-      "address": "0xc78307EfaE791780608c019b134F805369f4EB3F",
+      "address": "0xCC8768f032A4098eA4d53C71BE124F7e86a0913d",
       "name": "INFTFixed",
-      "txHash": "0x65d506a0cb9fb5088287a631468594020e9842b489021ec640b285f34ac0a965",
-      "dataVerifierAddress": "0xC4176Fc4488032f8eBF02A88B7E939f0eE1F3709",
+      "txHash": "0x9048791e0c9a9604ca8a2033ed7574b357a58ed74846bc7a4e044fa52401ce4c",
+      "dataVerifierAddress": "0x347e390BbFF256199159Ca1BBFbF044D7cAA2bD4",
       "tokenName": "0G Intelligent NFTs",
       "tokenSymbol": "0G-INFT"
     }

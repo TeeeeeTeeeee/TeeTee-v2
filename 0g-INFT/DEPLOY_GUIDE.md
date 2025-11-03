@@ -213,3 +213,5 @@ npx hardhat run scripts/deploy-all.ts --network galileo
 
 Good luck! 🍀
 
+
+

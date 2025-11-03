@@ -33,8 +33,7 @@ export default function INFTPage() {
   
   // Use custom hooks
   const { mint, isPending: isMintPending, isConfirming: isMintConfirming, isConfirmed: isMintConfirmed, error: mintError } = useMintINFT()
-  const { authorize, isPending: isAuthPending, isConfirming: isAuthConfirming, isConfirmed: isAuthConfirmed, error: authError } = useAuthorizeINFT()
-  const { burn, isPending: isBurnPending, isConfirming: isBurnConfirming, isConfirmed: isBurnConfirmed, error: burnError } = useBurnINFT()
+  const { authorize, revoke, isPending: isAuthPending, isConfirming: isAuthConfirming, isConfirmed: isAuthConfirmed, error: authError } = useAuthorizeINFT()
   const { infer, result: inferenceResult, isInferring, error: inferenceError } = useInference()
   const { streamInfer, tokens: streamingTokens, isStreaming, error: streamError } = useStreamingInference()
 
@@ -48,10 +47,6 @@ export default function INFTPage() {
   const [authorizeForm, setAuthorizeForm] = useState({
     tokenId: '1',
     userAddress: ''
-  })
-  
-  const [burnForm, setBurnForm] = useState({
-    tokenId: '1'
   })
   
   const [inferForm, setInferForm] = useState({
@@ -163,16 +158,6 @@ export default function INFTPage() {
     }
   }
 
-  const handleBurn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!window.confirm(`Are you sure you want to burn INFT #${burnForm.tokenId}? This cannot be undone!`)) {
-      return
-    }
-    const success = await burn(burnForm.tokenId)
-    if (!success && burnError) {
-      alert('Burn failed: ' + burnError)
-    }
-  }
 
   const handleInfer = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -271,6 +256,9 @@ export default function INFTPage() {
             <p style={{ margin: '10px 0', fontSize: '14px', color: '#666' }}>
               💡 <strong>Tip:</strong> Each INFT contains encrypted AI data stored on 0G Network. 
               The defaults below use your current encrypted data configuration.
+            </p>
+            <p style={{ margin: '10px 0', fontSize: '14px', color: '#10b981' }}>
+              ⚡ <strong>New:</strong> Gas-optimized epoch-based authorization system - burn operations are now ultra-efficient (O(1) complexity)!
             </p>
           </div>
 
@@ -373,36 +361,55 @@ export default function INFTPage() {
               </form>
             </div>
 
-            {/* Burn INFT */}
+            {/* Revoke Usage */}
             <div style={{ border: '1px solid #ff4444', padding: '15px' }}>
-              <h2 style={{ color: '#ff4444' }}>🔥 Burn INFT</h2>
-              <p style={{ fontSize: '12px', color: '#666', marginTop: '0' }}>Permanently destroy an INFT (cannot be undone)</p>
+              <h2 style={{ color: '#ff4444' }}>❌ Revoke Usage</h2>
+              <p style={{ fontSize: '12px', color: '#666', marginTop: '0' }}>
+                Remove authorization from a user
+              </p>
               
-              <form onSubmit={handleBurn}>
+              <form onSubmit={handleAuthorize}>
                 <div style={{ marginBottom: '10px' }}>
                   <label>Token ID</label><br />
                   <input
                     type="number"
-                    value={burnForm.tokenId}
-                    onChange={(e) => setBurnForm({...burnForm, tokenId: e.target.value})}
+                    value={authorizeForm.tokenId}
+                    onChange={(e) => setAuthorizeForm({...authorizeForm, tokenId: e.target.value})}
                     style={{ width: '100%', padding: '5px' }}
                     min="1"
                   />
                 </div>
                 
+                <div style={{ marginBottom: '10px' }}>
+                  <label>User Address</label><br />
+                  <input
+                    type="text"
+                    value={authorizeForm.userAddress}
+                    onChange={(e) => setAuthorizeForm({...authorizeForm, userAddress: e.target.value})}
+                    style={{ width: '100%', padding: '5px' }}
+                    placeholder="0x..."
+                  />
+                </div>
+                
                 <button
-                  type="submit"
-                  disabled={isBurnPending || isBurnConfirming}
+                  type="button"
+                  onClick={async () => {
+                    const success = await revoke(authorizeForm.tokenId, authorizeForm.userAddress)
+                    if (!success && authError) {
+                      alert('Revoke failed: ' + authError)
+                    }
+                  }}
+                  disabled={isAuthPending || isAuthConfirming}
                   style={{ width: '100%', padding: '10px', backgroundColor: '#ff4444', color: 'white', border: 'none', cursor: 'pointer' }}
                 >
-                  {isBurnPending || isBurnConfirming ? 'Processing...' : 'Burn INFT'}
+                  {isAuthPending || isAuthConfirming ? 'Processing...' : 'Revoke User'}
                 </button>
                 
-                {isBurnConfirmed && (
-                  <p style={{ color: 'green', marginTop: '10px' }}>Successfully burned!</p>
+                {isAuthConfirmed && (
+                  <p style={{ color: 'green', marginTop: '10px' }}>Revoked successfully!</p>
                 )}
-                {burnError && (
-                  <p style={{ color: 'red', marginTop: '10px' }}>{burnError}</p>
+                {authError && (
+                  <p style={{ color: 'red', marginTop: '10px' }}>{authError}</p>
                 )}
               </form>
             </div>

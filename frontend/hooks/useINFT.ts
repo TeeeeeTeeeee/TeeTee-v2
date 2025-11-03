@@ -90,6 +90,20 @@ export const INFT_ABI = [
     "stateMutability": "nonpayable",
     "type": "function"
   },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "ownerBurn",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
 ]
 
 /**
@@ -202,7 +216,7 @@ export function useAuthorizeINFT() {
 }
 
 /**
- * Custom hook for burning INFT tokens
+ * Custom hook for burning INFT tokens (owner-only, transfers to blackhole)
  */
 export function useBurnINFT() {
   const { writeContract, data: hash, isPending } = useWriteContract()
@@ -218,17 +232,19 @@ export function useBurnINFT() {
     }
 
     try {
+      // Use ownerBurn which transfers to blackhole address (simpler than _burn)
       await writeContract({
         address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
         abi: INFT_ABI,
-        functionName: 'burn',
+        functionName: 'ownerBurn',
         args: [BigInt(tokenId)],
       })
       return true
     } catch (err: any) {
       const errorMessage = err?.message || 'Unknown error'
       setError(errorMessage)
-      console.error('Burn failed:', err)
+      console.error('Owner burn failed:', err)
+      console.error('Full error details:', err)
       return false
     }
   }
@@ -278,7 +294,7 @@ export function useCheckINFTAuthorization(
   // 1. They have authorization for the token, AND
   // 2. If allowedIssuer is specified, the token must be from that issuer
   const isValidAuthorization = !!isAuthorized && 
-    (!allowedIssuer || (minter?.toLowerCase() === allowedIssuer.toLowerCase()))
+    (!allowedIssuer || (typeof minter === 'string' && minter.toLowerCase() === allowedIssuer.toLowerCase()))
 
   return {
     isAuthorized: isValidAuthorization,

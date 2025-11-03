@@ -66,7 +66,7 @@ async function main() {
   console.log('✅ Deployment file updated');
 
   console.log('\n🎯 Summary:');
-  console.log('Old INFT:', deployment.inft.address);
+  console.log('Old INFT:', deployment.INFT || deployment.inft?.address || 'N/A');
   console.log('New INFT:', inftAddress);
   console.log('DataVerifier:', NEW_DATA_VERIFIER_ADDRESS);
   
