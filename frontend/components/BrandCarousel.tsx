@@ -27,7 +27,7 @@ export const BrandCarousel = () => {
   ];
 
   return (
-    <section className="py-16 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
+    <section className="relative z-20 py-16 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
       {/* Title */}
       <div className="text-center mb-8">
         <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">

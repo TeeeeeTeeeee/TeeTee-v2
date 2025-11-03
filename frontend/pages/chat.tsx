@@ -678,18 +678,21 @@ const ChatPage = () => {
           </div>
           
           {/* INFT Toggle */}
-          <div className="mt-3 flex items-center justify-between px-2 py-2 bg-gray-50 rounded-lg">
-            <label htmlFor="inft-toggle" className="flex items-center gap-2 cursor-pointer flex-1">
+          <div className="mt-3 px-2 py-2 bg-gray-50 rounded-lg">
+            <label htmlFor="inft-toggle" className={`flex items-center gap-2 ${hasINFT ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
               <input
                 id="inft-toggle"
                 type="checkbox"
                 checked={useINFTInference}
                 onChange={(e) => setUseINFTInference(e.target.checked)}
-                className="w-4 h-4 text-violet-600 bg-white border-gray-300 rounded focus:ring-violet-500 focus:ring-2 cursor-pointer"
+                disabled={!hasINFT}
+                className={`w-4 h-4 text-violet-600 bg-white border-gray-300 rounded focus:ring-violet-500 focus:ring-2 ${hasINFT ? 'cursor-pointer' : 'cursor-not-allowed'}`}
               />
-              <span className="text-xs text-gray-700 font-medium">
+              <span className="text-xs text-gray-700 font-medium flex-1">
                 Use hosted INFT
-                <span className="block text-[10px] text-gray-500 font-normal">(No Tokens Used)</span>
+                <span className="block text-[10px] text-gray-500 font-normal">
+                  {hasINFT ? '(No Tokens Used)' : '(You don\'t have a hosted model)'}
+                </span>
               </span>
             </label>
           </div>
