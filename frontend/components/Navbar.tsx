@@ -1,4 +1,4 @@
-import { Home, MessageSquare, Box, HelpCircle } from 'lucide-react';
+import { Home, MessageSquare, Box, HelpCircle, LayoutDashboard } from 'lucide-react';
 import { NavBar } from './ui/tubelight-navbar';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useState, useEffect } from 'react';
@@ -15,7 +15,7 @@ export const Navbar = ({ hideLogo = false, hasSidebar = false }: NavbarProps) =>
     { name: 'Home', url: '/', icon: Home },
     { name: 'Chat', url: '/chat', icon: MessageSquare },
     { name: 'Models', url: '/models', icon: Box },
-    { name: 'FAQ', url: '/faq', icon: HelpCircle },
+    { name: 'Console', url: '/console', icon: LayoutDashboard },
   ];
 
   useEffect(() => {

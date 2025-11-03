@@ -9,13 +9,11 @@ import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM
 import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
-import { useCheckHostedLLM } from '../lib/contracts/creditUse/reads/useCheckHostedLLM';
-import { useAccount, useReadContract, useConfig } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
 import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
-import { areUrlsSame } from '../utils/shardUtils';
 
 interface AddModelFormData {
   modelName: string;
@@ -37,43 +35,7 @@ interface IncompleteLLM {
   isComplete?: boolean;
 }
 
-const AVAILABLE_MODELS = [
-  'TinyLlama-1.1B-Chat-v1.0',
-  'Mistral-7B-Instruct-v0.3',
-  'Qwen2.5-7B-Instruct',
-  'Phi-3-Mini-4K-Instruct',
-  'Gemma-2-2B-Instruct',
-  'GPT-3.5-Turbo',
-  'Claude-3-Haiku',
-  'DeepSeek-V2-Lite'
-];
-
-// Docker compose content for hosting guide
-const DOCKER_COMPOSE_CONTENT = `version: '3.8'
-
-services:
-  llm-server:
-    image: derek2403/teetee-llm-server:latest
-    container_name: teetee-llm-server
-    ports:
-      - "3001:3001"
-    environment:
-      - PHALA_API_KEY=\${PHALA_API_KEY}
-      - PORT=3001
-      - NODE_ENV=production
-    restart: unless-stopped
-    volumes:
-      - /var/run/tappd.sock:/var/run/tappd.sock`;
-
-// Slideshow images (16:9 ratio) - Add your image URLs here
-const GUIDE_SLIDES = [
-  '/images/guide/1.png',
-  '/images/guide/2.png',
-  '/images/guide/3.png',
-  '/images/guide/4.png',
-];
-
-// LLM Icon mapping - Maps model names to image URLs
+// LLM Icon mapping
 const LLM_ICONS: Record<string, string> = {
   'TinyLlama-1.1B-Chat-v1.0': '/images/tinyllama.png',
   'Mistral-7B-Instruct-v0.3': 'https://vectorseek.com/wp-content/uploads/2023/12/Mistral-AI-Icon-Logo-Vector.svg-.png',
@@ -85,29 +47,16 @@ const LLM_ICONS: Record<string, string> = {
   'DeepSeek-V2-Lite': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/deepseek-color.png'
 };
 
-// Default icon URL for models not in the mapping
 const DEFAULT_LLM_ICON = 'https://www.redpill.ai/_next/image?url=https%3A%2F%2Ft0.gstatic.com%2FfaviconV2%3Fclient%3DSOCIAL%26type%3DFAVICON%26fallback_opts%3DTYPE%2CSIZE%2CURL%26url%3Dhttps%3A%2F%2Fhuggingface.co%2F%26size%3D32&w=48&q=75';
 
-// Helper function to get icon URL for a model
 const getModelIcon = (modelName: string): string => {
   return LLM_ICONS[modelName] || DEFAULT_LLM_ICON;
 };
 
-const AVAILABLE_SHARDS = [
-  { id: 'shard-1', name: 'Shard 1', region: 'US-East', capacity: '75%' },
-  { id: 'shard-2', name: 'Shard 2', region: 'US-West', capacity: '60%' },
-  { id: 'shard-3', name: 'Shard 3', region: 'EU-Central', capacity: '45%' },
-  { id: 'shard-4', name: 'Shard 4', region: 'Asia-Pacific', capacity: '30%' },
-  { id: 'shard-5', name: 'Shard 5', region: 'US-Central', capacity: '90%' },
-  { id: 'shard-6', name: 'Shard 6', region: 'EU-West', capacity: '55%' }
-];
-
 const ModelsPage = () => {
   const router = useRouter();
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [sortBy, setSortBy] = useState<'name' | 'date' | 'status'>('date');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'incomplete' | 'mymodels'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'incomplete' | 'mymodels'>('all');
   const [showJoinForm, setShowJoinForm] = useState(false);
   const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
   const [selectedModelName, setSelectedModelName] = useState<string>('');
@@ -116,22 +65,14 @@ const ModelsPage = () => {
   const [isLoadingAllModels, setIsLoadingAllModels] = useState(false);
   const [incompleteLLMDetails, setIncompleteLLMDetails] = useState<IncompleteLLM[]>([]);
   const [isLoadingIncomplete, setIsLoadingIncomplete] = useState(false);
+  const [myHostedModels, setMyHostedModels] = useState<IncompleteLLM[]>([]);
+  const [isLoadingMyModels, setIsLoadingMyModels] = useState(false);
   const [showClaimINFTModal, setShowClaimINFTModal] = useState(false);
   const [registeredModelName, setRegisteredModelName] = useState<string>('');
   const [isSecondHost, setIsSecondHost] = useState(false);
-  const [myHostedModels, setMyHostedModels] = useState<IncompleteLLM[]>([]);
-  const [isLoadingMyModels, setIsLoadingMyModels] = useState(false);
-  const [pausingModelId, setPausingModelId] = useState<number | null>(null);
-  const [stoppingModelId, setStoppingModelId] = useState<number | null>(null);
-  const [showStopConfirm, setShowStopConfirm] = useState(false);
-  const [modelToStop, setModelToStop] = useState<IncompleteLLM | null>(null);
-  const [showHostingGuide, setShowHostingGuide] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [isCopied, setIsCopied] = useState(false);
 
   // Smart contract hooks
-  const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
-  const { stopLLM, isWriting: isStoppingLLM, isConfirmed: isStopConfirmed } = useStopLLM();
+  const { registerLLM, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
@@ -154,7 +95,6 @@ const ModelsPage = () => {
       try {
         const models: IncompleteLLM[] = [];
         
-        // Fetch all LLMs
         for (let i = 0; i < Number(totalLLMs); i++) {
           try {
             const data = await readContract(config, {
@@ -207,7 +147,6 @@ const ModelsPage = () => {
       try {
         const details: IncompleteLLM[] = [];
         
-        // Fetch details for each incomplete LLM using the contract
         for (const llmId of incompleteLLMs) {
           try {
             const data = await readContract(config, {
@@ -217,10 +156,7 @@ const ModelsPage = () => {
               args: [llmId]
             }) as any;
             
-            console.log('LLM Data for ID', llmId, ':', data);
-            
             if (data) {
-              // Access struct fields by name (wagmi returns structs as objects)
               details.push({
                 id: Number(llmId),
                 modelName: data.modelName || data[4] || 'Unknown Model',
@@ -259,7 +195,6 @@ const ModelsPage = () => {
       try {
         const myModels: IncompleteLLM[] = [];
         
-        // Iterate through all LLMs and find ones where user is host1 or host2
         for (let i = 0; i < Number(totalLLMs); i++) {
           try {
             const data = await readContract(config, {
@@ -274,7 +209,6 @@ const ModelsPage = () => {
               const host2 = (data.host2 || data[1] || '').toLowerCase();
               const userAddress = connectedAddress.toLowerCase();
               
-              // Check if user is either host1 or host2
               if (host1 === userAddress || host2 === userAddress) {
                 myModels.push({
                   id: i,
@@ -306,12 +240,6 @@ const ModelsPage = () => {
     fetchMyHostedModels();
   }, [connectedAddress, totalLLMs, config, isConfirmed]);
 
-  // Reset form state
-  const resetForm = () => {
-    setShowAddForm(false);
-    resetWrite();
-  };
-
   // Reset join form
   const resetJoinForm = () => {
     setShowJoinForm(false);
@@ -319,42 +247,6 @@ const ModelsPage = () => {
     setSelectedModelName('');
     setExistingShardUrl('');
     resetWrite();
-  };
-
-  // Handle form submission for registering first host
-  const handleAddModel = async (formData: AddModelFormData) => {
-    if (!formData.modelName || !formData.shardUrl || !formData.walletAddress || totalLLMs === undefined) {
-      return;
-    }
-
-    if (!connectedAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
-    try {
-      resetWrite();
-      
-      // Store model name for the claim modal later
-      setRegisteredModelName(formData.modelName);
-      
-      // Register first host on blockchain (creates slot)
-      // Pass totalLLMs as llmId to create new entry
-      // Use address(0) for host2 and empty string for shardUrl2 to leave them empty
-      // Pass 0 for time fields - these will be set by oracle
-      await registerLLM(
-        Number(totalLLMs),                              // llmId - array length for new entry
-        formData.walletAddress,                         // host1
-        '0x0000000000000000000000000000000000000000',  // host2 - empty (address zero)
-        formData.shardUrl,                              // shardUrl1 - TEE endpoint URL
-        '',                                             // shardUrl2 - empty
-        formData.modelName,                            // modelName
-        0,                                              // totalTimeHost1 - will be set by oracle
-        0                                               // totalTimeHost2 - empty
-      );
-    } catch (error) {
-      // Error is surfaced via wallet UI
-    }
   };
 
   // Handle joining as second host
@@ -369,79 +261,41 @@ const ModelsPage = () => {
     try {
       resetWrite();
       
-      // Store model name for the claim modal later
-      const llmDetails = incompleteLLMDetails.find(llm => llm.id === selectedLLMId);
+      const llmDetails = allModels.find((llm: IncompleteLLM) => llm.id === selectedLLMId);
       setRegisteredModelName(llmDetails?.modelName || 'Model');
       
-      // Double-check for URL duplication (final validation)
-      if (llmDetails?.shardUrl1 && areUrlsSame(llmDetails.shardUrl1, formData.shardUrl)) {
-        alert('Error: Cannot use the same TEE endpoint URL as the first host. Please use a different endpoint.');
-        return;
-      }
-      
-      // Join as second host on blockchain
-      // Pass existing llmId, leave host1 fields as 0/empty to keep them, fill in host2 fields
-      // Pass 0 for time - will be set by oracle
       await registerLLM(
-        selectedLLMId,                                  // llmId - existing entry
-        '0x0000000000000000000000000000000000000000',  // host1 - empty (keep existing)
-        formData.walletAddress,                         // host2 - new host
-        '',                                             // shardUrl1 - empty (keep existing)
-        formData.shardUrl,                              // shardUrl2 - TEE endpoint URL
-        '',                                             // modelName - empty (keep existing)
-        0,                                              // totalTimeHost1 - 0 (keep existing)
-        0                                               // totalTimeHost2 - will be set by oracle
+        selectedLLMId,
+        '0x0000000000000000000000000000000000000000',
+        formData.walletAddress,
+        '',
+        formData.shardUrl,
+        '',
+        0,
+        0
       );
     } catch (error) {
       console.error('Failed to join as second host:', error);
-      // Error is surfaced via wallet UI
     }
   };
 
-  // Effect to handle successful model registration - show claim modal instead of auto-minting
+  // Effect to handle successful join as second host
   useEffect(() => {
-    if (isConfirmed && connectedAddress && !showJoinForm && registeredModelName) {
-      console.log('Model registered successfully! Showing claim INFT modal...');
-      
-      setIsSecondHost(false);
-      
-      // Show claim modal
-      setShowClaimINFTModal(true);
-      
-      // Reset the registration form
-      resetForm();
-      
-      // Refetch data
-      refetchIncomplete();
-      refetchTotal();
-    } else if (isConfirmed && showJoinForm && registeredModelName) {
-      console.log('Joined as second host successfully! Showing claim INFT modal...');
-      
+    if (isConfirmed && showJoinForm && registeredModelName) {
       setIsSecondHost(true);
-      
-      // Show claim modal
       setShowClaimINFTModal(true);
-      
-      // Reset the join form
       resetJoinForm();
-      
-      // Refetch data
       refetchIncomplete();
       refetchTotal();
     }
-  }, [isConfirmed, connectedAddress, showJoinForm, registeredModelName]);
+  }, [isConfirmed, showJoinForm, registeredModelName]);
   
-  // Effect to handle successful INFT mint - then authorize the user
+  // Effect to handle successful INFT mint
   useEffect(() => {
     const handleMintSuccess = async () => {
       if (isMintConfirmed && connectedAddress) {
-        console.log('INFT minted, authorizing user...');
-        
         try {
-          // Authorize the hoster to use the INFT (assuming token ID 1 for now)
-          // In production, you'd track the actual token ID from the mint transaction
-          const tokenId = 1; // This should be retrieved from mint transaction event
-          
+          const tokenId = 1;
           await authorizeINFT(tokenId, connectedAddress);
         } catch (error) {
           console.error('Failed to authorize user:', error);
@@ -455,12 +309,11 @@ const ModelsPage = () => {
   // Effect to auto-close modal after successful authorization
   useEffect(() => {
     if (isAuthConfirmed) {
-      console.log('Authorization confirmed, closing modal in 2 seconds...');
       const timer = setTimeout(() => {
         setShowClaimINFTModal(false);
         setRegisteredModelName('');
         setIsSecondHost(false);
-      }, 2000); // Close after 2 seconds to show success message
+      }, 2000);
       
       return () => clearTimeout(timer);
     }
@@ -474,9 +327,8 @@ const ModelsPage = () => {
     }
     
     try {
-      // Mint INFT for the model hoster
       const encryptedURI = '0g://storage/model-data-' + Date.now();
-      const metadataHash = '0x' + Array(64).fill('0').join(''); // Placeholder hash
+      const metadataHash = '0x' + Array(64).fill('0').join('');
       
       const mintSuccess = await mintINFT(connectedAddress, encryptedURI, metadataHash);
       
@@ -488,94 +340,6 @@ const ModelsPage = () => {
     }
   };
 
-  // Handle copying docker compose content
-  const handleCopyDockerCompose = async () => {
-    try {
-      await navigator.clipboard.writeText(DOCKER_COMPOSE_CONTENT);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-    }
-  };
-
-  // Handle slideshow navigation
-  const handleNextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % GUIDE_SLIDES.length);
-  };
-
-  const handlePrevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + GUIDE_SLIDES.length) % GUIDE_SLIDES.length);
-  };
-
-  // Handle pausing a model
-  const handlePauseModel = async (modelId: number) => {
-    if (!connectedAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
-    try {
-      setPausingModelId(modelId);
-      
-      // TODO: Implement pause functionality with smart contract
-      // For now, just show a message
-      alert('Pause functionality will report downtime to the contract. This feature is coming soon!');
-      
-      console.log(`Pausing model ${modelId}`);
-      
-      // In production, you would call a contract function here
-      // Example: await reportDowntime(modelId, downtime_minutes);
-      
-    } catch (error) {
-      console.error('Failed to pause model:', error);
-      alert('Failed to pause model. Please try again.');
-    } finally {
-      setPausingModelId(null);
-    }
-  };
-
-  // Handle stopping a model (show confirmation first)
-  const handleStopModel = (model: IncompleteLLM) => {
-    setModelToStop(model);
-    setShowStopConfirm(true);
-  };
-
-  // Confirm stopping a model
-  const confirmStopModel = async () => {
-    if (!connectedAddress || !modelToStop) return;
-
-    try {
-      setStoppingModelId(modelToStop.id);
-      
-      const userIsHost1 = modelToStop.host1.toLowerCase() === connectedAddress.toLowerCase();
-      const hostNumber = userIsHost1 ? 1 : 2;
-      
-      // Call stopLLM contract function
-      await stopLLM(modelToStop.id, hostNumber);
-      
-      console.log(`Stopped hosting model ${modelToStop.id} as host ${hostNumber}`);
-      
-      // Close modal and reset
-      setShowStopConfirm(false);
-      setModelToStop(null);
-      
-    } catch (error) {
-      console.error('Failed to stop hosting:', error);
-      alert('Failed to stop hosting. Please try again.');
-    } finally {
-      setStoppingModelId(null);
-    }
-  };
-
-  // Refresh data when stop is confirmed
-  useEffect(() => {
-    if (isStopConfirmed) {
-      refetchTotal();
-      refetchIncomplete();
-    }
-  }, [isStopConfirmed]);
-
   return (
     <div className="min-h-screen bg-transparent font-inter">
       {/* Navbar */}
@@ -583,86 +347,42 @@ const ModelsPage = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-8 py-12 mt-24">
-        {/* Header */}
-        <div className="mb-10">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Models</h1>
-              <p className="text-gray-600 mt-1">Manage your AI models across distributed shards</p>
-            </div>
-            
-            {/* Add Model Button - Always visible */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowHostingGuide(true)}
-                className="p-3 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 transition-all"
-                title="How to host a model on Phala Cloud"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </button>
-              
-              <button
-                onClick={() => setShowAddForm(!showAddForm)}
-                className={`px-6 py-3 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
-                  showAddForm 
-                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
-                    : 'bg-gradient-to-r from-violet-400 to-purple-300 text-white hover:opacity-90'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  {showAddForm ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  )}
-                </svg>
-                {showAddForm ? 'Cancel' : 'Add Model'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Add Model Form - Expands when button is clicked */}
-        {showAddForm && (
-          <AddModelForm
-            availableModels={AVAILABLE_MODELS}
-            availableShards={AVAILABLE_SHARDS}
-            connectedAddress={connectedAddress}
-            onSubmit={handleAddModel}
-            onCancel={resetForm}
-            isWriting={isWriting}
-            isConfirming={isConfirming}
-            isMinting={isMinting}
-            isAuthorizing={isAuthorizing}
-            writeError={writeError}
-          />
-        )}
-
-        {/* Available Hosting Slots Section - Show incomplete LLMs waiting for second host or user's hosted models */}
-        {!showAddForm && !showJoinForm && (
+        {/* Models Section */}
+        {!showJoinForm && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-12"
           >
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                {filterStatus === 'mymodels' ? 'My Hosted Models' : 
-                 filterStatus === 'all' ? 'All Models' :
-                 filterStatus === 'available' ? 'Available Models' :
-                 'Models Needing Host'}
-              </h2>
-              <p className="text-gray-600">
-                {filterStatus === 'mymodels' 
-                  ? 'Models you are currently hosting' 
-                  : filterStatus === 'all'
-                  ? 'All registered models on the network'
-                  : filterStatus === 'available'
-                  ? 'Complete models ready to use'
-                  : 'Incomplete models waiting for a second host'}
-              </p>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {filterStatus === 'mymodels' ? 'My Hosted Models' : 
+                   filterStatus === 'all' ? 'All Models' :
+                   filterStatus === 'available' ? 'Available Models' :
+                   'Models Needing Host'}
+                </h2>
+                <p className="text-gray-600">
+                  {filterStatus === 'mymodels' 
+                    ? 'Models you are currently hosting' 
+                    : filterStatus === 'all'
+                    ? 'All registered models on the network'
+                    : filterStatus === 'available'
+                    ? 'Complete models ready to use'
+                    : 'Incomplete models waiting for a second host'}
+                </p>
+              </div>
+              
+              {/* Want to host button */}
+              <button
+                onClick={() => router.push('/console')}
+                className="px-6 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-full hover:opacity-90 transition-opacity font-medium flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Want to host your own model?
+              </button>
             </div>
 
             {/* Search and Filter Controls */}
@@ -702,21 +422,21 @@ const ModelsPage = () => {
                   
                   <div className="h-6 w-px bg-gray-300"></div>
                   
-                      <button
+                  <button
                     onClick={() => setFilterStatus('available')}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
                       filterStatus === 'available'
-                            ? 'text-violet-600 bg-violet-100 scale-105'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
-                        }`}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                        ? 'text-violet-600 bg-violet-100 scale-105'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100 hover:scale-102'
+                    }`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                    </svg>
                     Available ({allModels.filter(m => m.isComplete).length})
-                      </button>
-                      
-                      <div className="h-6 w-px bg-gray-300"></div>
+                  </button>
+                  
+                  <div className="h-6 w-px bg-gray-300"></div>
                   
                   <button
                     onClick={() => setFilterStatus('incomplete')}
@@ -751,25 +471,6 @@ const ModelsPage = () => {
                     </>
                   )}
                 </div>
-
-                {/* Sort Button */}
-                <div className="relative">
-                  <button className="flex items-center justify-center w-10 h-10 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 transition-colors focus:outline-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
-                    </svg>
-                  </button>
-                  
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value as 'name' | 'date' | 'status')}
-                    className="absolute top-0 left-0 w-full h-full opacity-0 cursor-pointer"
-                  >
-                    <option value="date">Date Added</option>
-                    <option value="name">Name</option>
-                    <option value="status">Status</option>
-                  </select>
-                </div>
               </div>
             </div>
 
@@ -777,214 +478,6 @@ const ModelsPage = () => {
               <div className="flex items-center justify-center py-10">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
               </div>
-            ) : filterStatus === 'mymodels' ? (
-              // Show user's hosted models
-              myHostedModels.length === 0 ? (
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-200 p-8">
-                  <div className="text-center max-w-md mx-auto">
-                    <div className="mb-4">
-                      <svg className="w-16 h-16 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">No models hosted yet</h3>
-                    <p className="text-gray-600 mb-4">You're not currently hosting any models. Start by adding a new model or joining an existing hosting slot!</p>
-                    <button
-                      onClick={() => setShowAddForm(true)}
-                      className="px-6 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
-                    >
-                      Add Your First Model
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {myHostedModels
-                    .filter(model => {
-                      // Apply search filter
-                      if (searchTerm) {
-                        return model.modelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               model.host1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               (model.host2 && model.host2.toLowerCase().includes(searchTerm.toLowerCase())) ||
-                               model.shardUrl1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                               (model.shardUrl2 && model.shardUrl2.toLowerCase().includes(searchTerm.toLowerCase()));
-                      }
-                      return true;
-                    })
-                    .map((model) => {
-                      const userIsHost1 = model.host1.toLowerCase() === connectedAddress!.toLowerCase();
-                      const userIsHost2 = model.host2?.toLowerCase() === connectedAddress!.toLowerCase();
-                      const userRole = userIsHost1 ? 'Host 1' : 'Host 2';
-                      const userShard = userIsHost1 ? model.shardUrl1 : model.shardUrl2;
-                      const partnerAddress = userIsHost1 ? model.host2 : model.host1;
-                      const partnerShard = userIsHost1 ? model.shardUrl2 : model.shardUrl1;
-
-                      return (
-                        <motion.div
-                          key={model.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-start gap-3 flex-1">
-                              {/* LLM Icon */}
-                              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 p-1.5">
-                                <img 
-                                  src={getModelIcon(model.modelName)} 
-                                  alt={model.modelName}
-                                  className="w-full h-full object-contain"
-                                  onError={(e) => {
-                                    e.currentTarget.src = DEFAULT_LLM_ICON;
-                                  }}
-                                />
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
-                              </div>
-                            </div>
-                            {/* Status Badge - Top Right */}
-                            <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-green-100 text-green-700">
-                              ✓ Hosting
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 mb-4">
-                            {/* Model Info */}
-                            <div className="space-y-2 text-xs">
-                              <div className="flex items-start gap-2">
-                                <span className="text-gray-500">Model ID:</span>
-                                <span className="text-gray-900">#{model.id}</span>
-                              </div>
-                            </div>
-
-                            {/* Your Role */}
-                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                              <div className="flex items-center gap-2 mb-2">
-                                <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                </svg>
-                                <span className="text-xs font-semibold text-gray-900">Your Role:</span>
-                              </div>
-                              <div className="text-sm font-medium text-gray-900 mb-2">{userRole}</div>
-                              <div className="space-y-1.5 text-xs text-gray-600">
-                                {!model.isComplete && (
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-gray-500">Shard:</span>
-                                    <span className="text-gray-900">{userIsHost1 ? 'Shard 1' : 'Shard 2'} (Lower Layers)</span>
-                                  </div>
-                                )}
-                                <div className="flex items-start gap-2">
-                                  <span className="text-gray-500 flex-shrink-0">URL:</span>
-                                  <span className="font-mono text-gray-900 break-all">{userShard ? userShard.slice(0, 60) + '...' : 'N/A'}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Partner Info */}
-                            {partnerAddress && partnerAddress !== '0x0000000000000000000000000000000000000000' && (
-                              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                  </svg>
-                                  <span className="text-xs font-semibold text-gray-900">Partner:</span>
-                                </div>
-                                <div className="space-y-1.5 text-xs">
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-gray-500">Address:</span>
-                                    <span className="font-mono text-gray-900">{partnerAddress.slice(0, 10)}...{partnerAddress.slice(-8)}</span>
-                                  </div>
-                                  {!model.isComplete && (
-                                    <div className="flex items-start gap-2">
-                                      <span className="text-gray-500">Shard:</span>
-                                      <span className="text-gray-900">{userIsHost1 ? 'Shard 2' : 'Shard 1'} (Upper Layers)</span>
-                                    </div>
-                                  )}
-                                  <div className="flex items-start gap-2">
-                                    <span className="text-gray-500 flex-shrink-0">URL:</span>
-                                    <span className="font-mono text-gray-900 break-all">{partnerShard ? partnerShard.slice(0, 60) + '...' : 'N/A'}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Pool Balance */}
-                            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  <span className="text-xs font-semibold text-gray-900">Rewards Pool:</span>
-                                </div>
-                                <span className="text-sm font-bold text-gray-900">{model.poolBalance?.toString() || '0'}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="space-y-2">
-                            <button
-                              onClick={() => router.push('/chat')}
-                              className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                            >
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
-                              Use in Chat
-                            </button>
-                            
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => handlePauseModel(model.id)}
-                                disabled={pausingModelId === model.id || stoppingModelId === model.id}
-                                className="py-2 px-3 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors font-medium text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Report downtime for this model"
-                              >
-                                {pausingModelId === model.id ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-700"></div>
-                                    Pausing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Pause
-                                  </>
-                                )}
-                              </button>
-                              
-                              <button
-                                onClick={() => handleStopModel(model)}
-                                disabled={pausingModelId === model.id || stoppingModelId === model.id}
-                                className="py-2 px-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium text-xs flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Stop hosting this model"
-                              >
-                                {stoppingModelId === model.id ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
-                                    Stopping...
-                                  </>
-                                ) : (
-                                  <>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                                    </svg>
-                                    Stop
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                </div>
-              )
             ) : (() => {
               // Determine which models to show based on filter
               let modelsToShow: IncompleteLLM[] = [];
@@ -994,127 +487,139 @@ const ModelsPage = () => {
                 modelsToShow = allModels.filter(m => m.isComplete);
               } else if (filterStatus === 'incomplete') {
                 modelsToShow = incompleteLLMDetails;
+              } else if (filterStatus === 'mymodels') {
+                modelsToShow = myHostedModels;
               }
               
               return modelsToShow.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="text-center max-w-md">
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="text-center max-w-md">
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
                       {filterStatus === 'all' ? 'No models found' :
                        filterStatus === 'available' ? 'No available models' :
-                       'No incomplete models'}
+                       filterStatus === 'incomplete' ? 'No incomplete models' :
+                       'No models hosted yet'}
                     </h3>
-                    <p className="text-gray-600">
-                      {filterStatus === 'all' ? 'There are no models registered on the network yet' :
-                       filterStatus === 'available' ? 'There are no complete models ready to use' :
-                       'There are currently no hosting slots waiting for a second host'}
+                    <p className="text-gray-600 mb-6">
+                      {filterStatus === 'all' ? 'There are no models registered on the network yet. Be the first to add one!' :
+                       filterStatus === 'available' ? 'There are no complete models ready to use yet' :
+                       filterStatus === 'incomplete' ? 'There are currently no hosting slots waiting for a second host' :
+                       'You\'re not currently hosting any models. Start by adding a new model or joining an existing hosting slot!'}
                     </p>
+                    {filterStatus === 'all' && (
+                      <button
+                        onClick={() => router.push('/console')}
+                        className="px-6 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium inline-flex items-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Add Your First Model
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {modelsToShow
-                  .filter(llm => {
-                    // Apply search filter
-                    if (searchTerm) {
-                      return llm.modelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             llm.host1.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                             llm.shardUrl1.toLowerCase().includes(searchTerm.toLowerCase());
-                    }
-                    return true;
-                  })
-                  .map((llm) => {
+                    .filter(llm => {
+                      if (searchTerm) {
+                        return llm.modelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                               llm.host1.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                               llm.shardUrl1.toLowerCase().includes(searchTerm.toLowerCase());
+                      }
+                      return true;
+                    })
+                    .map((llm) => {
                     const isComplete = llm.isComplete || (llm.host2 && llm.host2 !== '0x0000000000000000000000000000000000000000');
                     
                     return (
-                  <motion.div
-                    key={llm.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                        className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-start gap-3 flex-1">
-                            {/* LLM Icon */}
-                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 p-1.5">
-                              <img 
-                                src={getModelIcon(llm.modelName)} 
-                                alt={llm.modelName}
-                                className="w-full h-full object-contain"
-                                onError={(e) => {
-                                  e.currentTarget.src = DEFAULT_LLM_ICON;
-                                }}
-                              />
-                        </div>
-                            <div className="flex-1">
-                              <h3 className="font-bold text-lg text-gray-900">{llm.modelName}</h3>
-                            </div>
-                          </div>
-                          {/* Status Badge - Top Right */}
-                          <div className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
-                            isComplete 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {isComplete ? '✓ Complete' : '⏳ Pending'}
+                <motion.div
+                  key={llm.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 p-1.5">
+                        <img 
+                          src={getModelIcon(llm.modelName)} 
+                          alt={llm.modelName}
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = DEFAULT_LLM_ICON;
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-gray-900">{llm.modelName}</h3>
                       </div>
                     </div>
+                    <div className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
+                      isComplete 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {isComplete ? '✓ Complete' : '⏳ Pending'}
+                    </div>
+                  </div>
 
-                        <div className="space-y-2 text-xs mb-4">
-                          <div className="flex items-start gap-2">
-                            <span className="text-gray-500">Model ID:</span>
-                            <span className="text-gray-700">#{llm.id}</span>
-                          </div>
-                          <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Host 1:</span>
-                            <span className="font-mono text-gray-700">{llm.host1.slice(0, 10)}...</span>
+                  <div className="space-y-2 text-xs mb-4">
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-500">Model ID:</span>
+                      <span className="text-gray-700">#{llm.id}</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-500">Host 1:</span>
+                      <span className="font-mono text-gray-700">{llm.host1.slice(0, 10)}...</span>
+                    </div>
+                    {isComplete && llm.host2 && llm.host2 !== '0x0000000000000000000000000000000000000000' && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-gray-500">Host 2:</span>
+                        <span className="font-mono text-gray-700">{llm.host2.slice(0, 10)}...</span>
                       </div>
-                          {isComplete && llm.host2 && llm.host2 !== '0x0000000000000000000000000000000000000000' && (
-                            <div className="flex items-start gap-2">
-                              <span className="text-gray-500">Host 2:</span>
-                              <span className="font-mono text-gray-700">{llm.host2.slice(0, 10)}...</span>
-                            </div>
-                          )}
-                          {!isComplete && (
-                            <div className="flex items-start gap-2">
+                    )}
+                    {!isComplete && (
+                      <div className="flex items-start gap-2">
                         <span className="text-gray-500">Shard 1:</span>
-                              <span className="text-gray-700">Lower Layers (1-50)</span>
+                        <span className="text-gray-700">Lower Layers (1-50)</span>
                       </div>
-                          )}
-                          <div className="flex items-start gap-2">
-                            <span className="text-gray-500 flex-shrink-0">URL:</span>
-                            <span className="font-mono text-gray-700 break-all">{llm.shardUrl1.slice(0, 60)}...</span>
-                          </div>
-                          <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Pool Balance:</span>
-                            <span className="text-gray-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
-                      </div>
+                    )}
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-500 flex-shrink-0">URL:</span>
+                      <span className="font-mono text-gray-700 break-all">{llm.shardUrl1.slice(0, 60)}...</span>
                     </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-gray-500">Pool Balance:</span>
+                      <span className="text-gray-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
+                    </div>
+                  </div>
 
-                        {isComplete ? (
-                          <button
-                            onClick={() => router.push('/chat')}
-                            className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            Use in Chat
-                          </button>
-                        ) : (
+                  {isComplete ? (
+                    <button
+                      onClick={() => router.push('/chat')}
+                      className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Use in Chat
+                    </button>
+                  ) : (
                     <button
                       onClick={() => {
                         setSelectedLLMId(llm.id);
-                              setSelectedModelName(llm.modelName);
+                        setSelectedModelName(llm.modelName);
                         setExistingShardUrl(llm.shardUrl1 || '');
                         setShowJoinForm(true);
                       }}
-                            className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
+                      className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
                     >
                       Join as Host 2
                     </button>
-                        )}
-                  </motion.div>
+                  )}
+                </motion.div>
                     );
                   })}
               </div>
@@ -1123,7 +628,7 @@ const ModelsPage = () => {
           </motion.div>
         )}
 
-        {/* Join as Second Host Form - Embedded */}
+        {/* Join as Second Host Form */}
         {showJoinForm && selectedLLMId !== null && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -1202,16 +707,14 @@ const ModelsPage = () => {
               animate={{ scale: 1, opacity: 1 }}
               className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
             >
-              {/* Header with gradient - Sticky */}
+              {/* Header */}
               <div className="bg-gradient-to-r from-violet-400 to-purple-300 px-6 py-4 text-white sticky top-0 z-10">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center gap-2">
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <h2 className="text-xl font-bold">
-                      {isSecondHost ? 'Joined Successfully!' : 'Registration Successful!'}
-                    </h2>
+                    <h2 className="text-xl font-bold">Joined Successfully!</h2>
                   </div>
                   <button
                     onClick={() => {
@@ -1227,12 +730,7 @@ const ModelsPage = () => {
                     </svg>
                   </button>
                 </div>
-                <p className="text-violet-100 text-sm">
-                  {isSecondHost 
-                    ? 'You are now the second host for this model'
-                    : 'Your model is now registered on the network'
-                  }
-                </p>
+                <p className="text-violet-100 text-sm">You are now the second host for this model</p>
               </div>
 
               {/* Content */}
@@ -1244,15 +742,9 @@ const ModelsPage = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <div>
-                      <h3 className="font-semibold text-green-900 mb-1">
-                        {isSecondHost ? 'Joined as Second Host' : 'Model Registered'}
-                      </h3>
+                      <h3 className="font-semibold text-green-900 mb-1">Joined as Second Host</h3>
                       <p className="text-sm text-green-700">
-                        {isSecondHost ? (
-                          <>You have successfully joined <strong>{registeredModelName}</strong> as the second host. The model is now complete!</>
-                        ) : (
-                          <><strong>{registeredModelName}</strong> has been successfully registered as a hosting slot.</>
-                        )}
+                        You have successfully joined <strong>{registeredModelName}</strong> as the second host. The model is now complete!
                       </p>
                     </div>
                   </div>
@@ -1267,7 +759,7 @@ const ModelsPage = () => {
                     Claim Your INFT Token
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
-                    As a {isSecondHost ? 'co-host' : 'model hoster'}, you're eligible for an <strong>Intelligent NFT (INFT)</strong> token. This token grants you:
+                    As a co-host, you're eligible for an <strong>Intelligent NFT (INFT)</strong> token. This token grants you:
                   </p>
                   <ul className="space-y-1.5 mb-3">
                     <li className="flex items-start gap-2">
@@ -1291,27 +783,14 @@ const ModelsPage = () => {
                   </ul>
                 </div>
 
-                {/* Action Section */}
-                <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-3 mb-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-1.5">
-                    Next Steps:
-                  </p>
-                  <ol className="text-xs text-gray-600 space-y-0.5 ml-4 list-decimal">
-                    <li>Click "Claim My INFT" to mint your token</li>
-                    <li>Approve the transaction in your wallet</li>
-                    <li>You'll be automatically authorized</li>
-                    <li>Start using AI inference in Chat!</li>
-                  </ol>
-                </div>
-
-                {/* Buttons - Sticky Bottom */}
-                <div className="flex gap-2 sticky bottom-0 bg-white pt-3 pb-1 -mx-6 px-6 border-t border-gray-100">
+                {/* Buttons */}
+                <div className="flex gap-2">
                   <button
-                  onClick={() => {
-                    setShowClaimINFTModal(false);
-                    setRegisteredModelName('');
-                    setIsSecondHost(false);
-                  }}
+                    onClick={() => {
+                      setShowClaimINFTModal(false);
+                      setRegisteredModelName('');
+                      setIsSecondHost(false);
+                    }}
                     disabled={isMinting || isAuthorizing}
                     className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 font-medium text-sm"
                   >
@@ -1343,7 +822,7 @@ const ModelsPage = () => {
                   </button>
                 </div>
 
-                {/* Success state after authorization */}
+                {/* Success state */}
                 {isAuthConfirmed && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
@@ -1361,262 +840,6 @@ const ModelsPage = () => {
                     </p>
                   </motion.div>
                 )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-        
-        {/* Hosting Guide Modal */}
-        {showHostingGuide && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
-            onClick={() => setShowHostingGuide(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl scrollbar-hide"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="bg-gradient-to-r from-violet-500 to-purple-500 px-6 py-4 text-white sticky top-0 z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold">How to Host a Model on Phala Cloud</h2>
-                    <p className="text-violet-100 text-sm mt-1">Follow these steps to set up your TEE environment</p>
-                  </div>
-                  <button
-                    onClick={() => setShowHostingGuide(false)}
-                    className="text-white hover:text-violet-100 transition-colors"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="p-6 space-y-6">
-                {/* Docker Compose Copy Section */}
-                <div className="bg-gray-100 rounded-lg p-4 border border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                      <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Copy this docker compose file <span className="text-red-500 text-xs font-italic mt-1">(will be used in next step)</span>
-                    </h3>
-                    <button
-                      onClick={handleCopyDockerCompose}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        isCopied
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-violet-600 text-white hover:bg-violet-700'
-                      }`}
-                    >
-                      {isCopied ? (
-                        <>
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Copied!
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                          Copy
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Slideshow Section */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Step-by-Step Guide
-                  </h3>
-                  
-                  {/* Slideshow */}
-                  <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                    {/* Image */}
-                    <div className="w-full h-full flex items-center justify-center">
-                      <img
-                        src={GUIDE_SLIDES[currentSlide]}
-                        alt={`Guide step ${currentSlide + 1}`}
-                        className="max-w-full max-h-full object-contain"
-                        onError={(e) => {
-                          // Fallback to placeholder if image fails to load
-                          e.currentTarget.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450"%3E%3Crect fill="%23e5e7eb" width="800" height="450"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" fill="%236b7280"%3ESlide ' + (currentSlide + 1) + '%3C/text%3E%3C/svg%3E';
-                        }}
-                      />
-                    </div>
-
-                    {/* Previous Button */}
-                    <button
-                      onClick={handlePrevSlide}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 p-3 rounded-full shadow-lg transition-all"
-                    >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                      </svg>
-                    </button>
-
-                    {/* Next Button */}
-                    <button
-                      onClick={handleNextSlide}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 p-3 rounded-full shadow-lg transition-all"
-                    >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-
-                    {/* Slide Counter */}
-                    <div className="absolute top-4 right-4 bg-gray-800 bg-opacity-70 text-white px-3 py-1 rounded-full text-sm font-medium">
-                      {currentSlide + 1} / {GUIDE_SLIDES.length}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer with helpful links */}
-                <div className="bg-violet-50 rounded-lg p-4 border border-violet-200">
-                  <p className="text-sm text-violet-900 font-medium mb-2">Need more help?</p>
-                  <div className="flex flex-wrap gap-3">
-                    <a
-                      href="https://docs.phala.network"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-violet-700 hover:text-violet-900 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                      </svg>
-                      Documentation
-                    </a>
-                    <a
-                      href="https://discord.gg/phala"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm text-violet-700 hover:text-violet-900 transition-colors"
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
-                      </svg>
-                      Join Discord
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-        
-        {/* Stop Hosting Confirmation Modal */}
-        {showStopConfirm && modelToStop && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
-            onClick={() => !stoppingModelId && setShowStopConfirm(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4 text-white rounded-t-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold">Stop Hosting?</h2>
-                    <p className="text-red-100 text-sm">This action cannot be undone</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                <div className="mb-4">
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                    <h3 className="font-semibold text-gray-900 mb-2">You are about to stop hosting:</h3>
-                    <p className="text-lg font-bold text-red-700 mb-1">{modelToStop.modelName}</p>
-                    <p className="text-sm text-gray-600">Model ID: #{modelToStop.id}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    <p className="text-sm text-gray-700">You will no longer be hosting this model</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-sm text-gray-700">Your accumulated rewards will be distributed</p>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <p className="text-sm text-gray-700">The model may become incomplete if you're the only host</p>
-                  </div>
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6">
-                  <p className="text-xs text-yellow-800">
-                    <strong>Note:</strong> If you want to host this model again in the future, you'll need to register from scratch.
-                  </p>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowStopConfirm(false)}
-                    disabled={stoppingModelId !== null}
-                    className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmStopModel}
-                    disabled={stoppingModelId !== null}
-                    className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
-                  >
-                    {stoppingModelId !== null ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Stopping...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-                        </svg>
-                        Yes, Stop Hosting
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
             </motion.div>
           </motion.div>
