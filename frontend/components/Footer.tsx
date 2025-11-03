@@ -4,7 +4,7 @@ import TextPressure from './TextPressure';
 
 export const Footer = () => {
   return (
-    <footer className="py-16 px-6">
+    <footer className="py-16 px-6 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
         <div className="max-w-7xl mx-auto">
           {/* Contact and Social Media Grid */}
           <div className="grid grid-cols-4 gap-20 mb-4">
