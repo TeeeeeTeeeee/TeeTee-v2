@@ -1,7 +1,7 @@
 import type { NextPage } from 'next';
 import { Geist, Geist_Mono } from "next/font/google";
 import dynamic from 'next/dynamic';
-import { Hero, Features, Footer, BrandCarousel } from '../components';
+import { Navbar, Hero, Features, Footer, BrandCarousel } from '../components';
 
 // Dynamically import components that use framer-motion to avoid SSR issues
 const HowItWorks = dynamic(() => import('../components/HowItWorks').then(mod => ({ default: mod.HowItWorks })), { ssr: false });
@@ -20,6 +20,7 @@ const geistMono = Geist_Mono({
 const Home: NextPage = () => {
   return (
     <main className={`min-h-screen w-full bg-gradient-to-l from-violet-200/20 to-white ${geistSans.variable} ${geistMono.variable}`}>
+      <Navbar />
       <div className="relative space-y-0">
         <Hero />
         <BrandCarousel />
