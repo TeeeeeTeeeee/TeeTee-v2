@@ -93,7 +93,7 @@ export const CallToAction = () => {
                         Looking for answer <span className="jump-animation">?</span>
                     </h1>
                     <p className="text-3xl text-slate-500 mt-6 pb-12 text-center">
-                        Everything you need to know about TeeTee's distributed AI infrastructure and how it keeps your data secure.
+                       
                     </p>
                     {faqs.map((faq, index) => (
                         <div className="border-b border-slate-200 py-8 cursor-pointer" key={index} onClick={() => setOpenIndex(openIndex === index ? null : index)}>

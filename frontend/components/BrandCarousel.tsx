@@ -9,7 +9,7 @@ export const BrandCarousel = () => {
     { name: 'Stripe', logo: '/logos/stripe.png' },
     { name: 'Notion', logo: '/logos/notion.png' },
     { name: 'Figma', logo: '/logos/figma.png' },
-    { name: 'Databricks', logo: '/logos/databricks.png' },
+    { name: 'Databricks', logo: '/logos/databricks1.png' },
     { name: 'GitHub', logo: '/logos/github.png' },
     { name: 'OpenAI', logo: '/logos/openAI.png' },
     { name: 'MongoDB', logo: '/logos/mongodb.png' },

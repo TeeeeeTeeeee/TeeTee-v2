@@ -1,17 +1,19 @@
 "use client";
 
-import TextPressure from './TextPressure';
+import dynamic from 'next/dynamic';
+
+const TextPressure = dynamic(() => import('./TextPressure'), { ssr: false });
 
 export const Footer = () => {
   return (
     <footer className="py-16 px-6 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
         <div className="max-w-7xl mx-auto">
           {/* Large Brand Text with TextPressure at the top */}
-          <div className="mb-10">
+          <div className="mb-10 pt-10">
             <div style={{ position: 'relative', height: '290px', width: '100%', padding: '0', overflow: 'visible' }}>
               <TextPressure
                 text="TEETEE"
-                flex={false} /* Set to false to allow custom positioning */
+                flex={false}
                 alpha={false}
                 stroke={false}
                 width={true}
@@ -21,7 +23,7 @@ export const Footer = () => {
                 strokeColor="#ddd6fe" 
                 fontFamily="Geist, Inter, sans-serif"
                 fontUrl=""
-                minFontSize={40} // Increased font size
+                minFontSize={40}
                 className="w-full"
               />
             </div>
