@@ -43,6 +43,9 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     /// @dev Mapping from token ID to array of authorized user addresses for enumeration
     mapping(uint256 => address[]) private _authorizedUsersArray;
     
+    /// @dev Mapping from token ID to original minter/issuer address
+    mapping(uint256 => address) public tokenMinter;
+    
     /// @dev Oracle/verifier contract for proof verification
     IDataVerifierAdapter public immutable dataVerifier;
     
@@ -326,10 +329,38 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         encryptedURI[tokenId] = _encryptedURI;
         metadataHash[tokenId] = _metadataHash;
         
+        // Track the original minter/issuer
+        tokenMinter[tokenId] = _msgSender();
+        
         // Mint the token
         _mint(to, tokenId);
         
         return tokenId;
+    }
+    
+    /**
+     * @dev Burn an INFT token
+     * @param tokenId Token ID to burn
+     * 
+     * Requirements:
+     * - Caller must be the owner or approved
+     * - Clears all authorizations
+     * - Removes all metadata references
+     */
+    function burn(uint256 tokenId) external {
+        address owner = ownerOf(tokenId);
+        require(_isAuthorized(owner, _msgSender(), tokenId), "Caller is not owner nor approved");
+        
+        // Clear all authorizations before burning
+        _clearAuthorizations(tokenId);
+        
+        // Clear metadata references
+        delete encryptedURI[tokenId];
+        delete metadataHash[tokenId];
+        delete tokenMinter[tokenId];
+        
+        // Burn the token (automatically emits Transfer event)
+        _burn(tokenId);
     }
     
     // ================================

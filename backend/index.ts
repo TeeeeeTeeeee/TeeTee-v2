@@ -78,11 +78,13 @@ interface InferResponse {
 
 interface QuotesData {
   version: string;
-  quotes: string[];
+  systemPrompt: string;
+  capabilities: string[];
+  guidelines: string[];
   metadata: {
     created: string;
     description: string;
-    totalQuotes: number;
+    type: string;
     category: string;
   };
 }
@@ -529,16 +531,18 @@ class INFTOracleService {
 
       // Check authorization
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
-      let isAuthorized = false;
+      let owner: string;
+      let isAuthorized: boolean;
       
       try {
+        owner = await this.inftContract.ownerOf(request.tokenId);
         isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
-        console.log(`[${requestId}] Authorization check: ${isAuthorized}`);
+        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
       } catch (error) {
-        console.error(`[${requestId}] Authorization check failed:`, error);
-        res.status(403).json({
+        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        res.status(404).json({
           success: false,
-          error: 'Authorization check failed. Token may not exist.'
+          error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.`
         });
         return;
       }
@@ -546,7 +550,7 @@ class INFTOracleService {
       if (!isAuthorized) {
         res.status(403).json({
           success: false,
-          error: 'Access denied. You are not authorized to use this INFT.'
+          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
         });
         return;
       }
@@ -570,8 +574,8 @@ class INFTOracleService {
         output = await this.performLLMInference(sanitizedInput, quotesData);
       } catch (error) {
         console.error(`[${requestId}] LLM inference failed:`, error);
-        // Fallback to random quote
-        output = quotesData.quotes[Math.floor(Math.random() * quotesData.quotes.length)];
+        // Fallback message
+        output = "I'm currently experiencing difficulties. Please try again in a moment.";
       }
 
       // Generate proof
@@ -617,10 +621,24 @@ class INFTOracleService {
       }
 
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
-      const isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
+      
+      // Check if token exists and get owner
+      let owner: string;
+      let isAuthorized: boolean;
+      try {
+        owner = await this.inftContract.ownerOf(request.tokenId);
+        isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
+        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
+      } catch (error) {
+        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        res.status(404).json({ error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.` });
+        return;
+      }
 
       if (!isAuthorized) {
-        res.status(403).json({ error: 'Access denied' });
+        res.status(403).json({ 
+          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}` 
+        });
         return;
       }
 
@@ -670,21 +688,26 @@ class INFTOracleService {
     }
 
     // Fallback: return demo data
-    console.log('Using demo quotes data');
+    console.log('Using demo AI assistant configuration');
     return {
       version: '1.0',
-      quotes: [
-        "The only way to do great work is to love what you do. - Steve Jobs",
-        "Innovation distinguishes between a leader and a follower. - Steve Jobs",
-        "Stay hungry, stay foolish. - Steve Jobs",
-        "The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt",
-        "Success is not final, failure is not fatal: it is the courage to continue that counts. - Winston Churchill"
+      systemPrompt: 'You are a helpful AI assistant powered by TeeTee. Provide accurate, concise, and friendly responses.',
+      capabilities: [
+        'Answer general knowledge questions',
+        'Explain concepts simply',
+        'Help with technical problems',
+        'Provide helpful suggestions'
+      ],
+      guidelines: [
+        'Be concise and clear',
+        'Provide accurate information',
+        'Be helpful and friendly'
       ],
       metadata: {
         created: new Date().toISOString(),
-        description: 'Inspirational quotes',
-        totalQuotes: 5,
-        category: 'motivation'
+        description: 'General purpose AI assistant (demo)',
+        type: 'ai-assistant',
+        category: 'general'
       }
     };
   }
@@ -848,18 +871,21 @@ class INFTOracleService {
       throw new Error('LLM API key not configured');
     }
 
-    // Build context from quotes
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    // Build prompt using general AI assistant format
+    const capabilities = quotesData.capabilities.join('\n- ');
+    const guidelines = quotesData.guidelines.join('\n- ');
+    
+    const prompt = `${quotesData.systemPrompt}
 
-    const prompt = `You are a concise assistant. Use the provided context strictly. Return a single inspirational quote tailored to the user's input.
+Your Capabilities:
+- ${capabilities}
 
-Input: "${input}"
+Guidelines:
+- ${guidelines}
 
-Context quotes:
-${context}
+User Question: "${input}"
 
-Respond with only the quote text. No prefatory wording.`;
+Provide a helpful, concise response:`;
 
     try {
       // Use circuit breaker for LLM call
@@ -870,9 +896,8 @@ Respond with only the quote text. No prefatory wording.`;
       
       // Fallback policy based on configuration
       if (this.llmConfig.devFallback && !error?.message?.includes('LLM_CIRCUIT_OPEN')) {
-        console.log('⚠️ Using random quote fallback');
-        const randomIndex = Math.floor(Math.random() * quotesData.quotes.length);
-        return quotesData.quotes[randomIndex];
+        console.log('⚠️ Using fallback response');
+        return "I'm here to help! Please try your question again.";
       }
       
       throw error;
@@ -891,10 +916,21 @@ Respond with only the quote text. No prefatory wording.`;
       throw new Error('LLM API key not configured');
     }
 
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    // Build prompt using general AI assistant format
+    const capabilities = quotesData.capabilities.join('\n- ');
+    const guidelines = quotesData.guidelines.join('\n- ');
+    
+    const prompt = `${quotesData.systemPrompt}
 
-    const prompt = `You are a concise assistant. Return a single inspirational quote tailored to: "${input}"\n\nContext:\n${context}`;
+Your Capabilities:
+- ${capabilities}
+
+Guidelines:
+- ${guidelines}
+
+User Question: "${input}"
+
+Provide a helpful, concise response:`;
 
     try {
       const response = await axios.post(
@@ -969,7 +1005,7 @@ Respond with only the quote text. No prefatory wording.`;
    */
   private generateProof(input: string, output: string, quotesData: QuotesData): string {
     const promptHash = crypto.createHash('sha256').update(input).digest('hex');
-    const contextHash = crypto.createHash('sha256').update(JSON.stringify(quotesData.quotes)).digest('hex');
+    const contextHash = crypto.createHash('sha256').update(quotesData.systemPrompt).digest('hex');
     const completionHash = crypto.createHash('sha256').update(output).digest('hex');
 
     const proofData = {

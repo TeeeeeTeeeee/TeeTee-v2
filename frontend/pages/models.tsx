@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
 import { AddModelForm } from '../components/AddModelForm';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
+import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useCheckHostedLLM } from '../lib/contracts/creditUse/reads/useCheckHostedLLM';
@@ -130,6 +131,7 @@ const ModelsPage = () => {
 
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
+  const { stopLLM, isWriting: isStoppingLLM, isConfirmed: isStopConfirmed } = useStopLLM();
   const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
@@ -547,29 +549,16 @@ const ModelsPage = () => {
       setStoppingModelId(modelToStop.id);
       
       const userIsHost1 = modelToStop.host1.toLowerCase() === connectedAddress.toLowerCase();
+      const hostNumber = userIsHost1 ? 1 : 2;
       
-      // Remove the user from the hosting slot by setting their address to 0x0
-      await registerLLM(
-        modelToStop.id,                                   // llmId - existing entry
-        userIsHost1 ? '0x0000000000000000000000000000000000000000' : modelToStop.host1,  // host1
-        userIsHost1 ? modelToStop.host2 || '0x0000000000000000000000000000000000000000' : '0x0000000000000000000000000000000000000000',  // host2
-        userIsHost1 ? '' : modelToStop.shardUrl1,        // shardUrl1
-        userIsHost1 ? modelToStop.shardUrl2 || '' : '',  // shardUrl2
-        '',                                               // modelName - keep existing
-        0,                                                // totalTimeHost1
-        0                                                 // totalTimeHost2
-      );
+      // Call stopLLM contract function
+      await stopLLM(modelToStop.id, hostNumber);
       
-      console.log(`Stopped hosting model ${modelToStop.id}`);
+      console.log(`Stopped hosting model ${modelToStop.id} as host ${hostNumber}`);
       
       // Close modal and reset
       setShowStopConfirm(false);
       setModelToStop(null);
-      
-      // Refresh data after confirmation
-      setTimeout(() => {
-        refetchTotal();
-      }, 2000);
       
     } catch (error) {
       console.error('Failed to stop hosting:', error);
@@ -578,6 +567,14 @@ const ModelsPage = () => {
       setStoppingModelId(null);
     }
   };
+
+  // Refresh data when stop is confirmed
+  useEffect(() => {
+    if (isStopConfirmed) {
+      refetchTotal();
+      refetchIncomplete();
+    }
+  }, [isStopConfirmed]);
 
   return (
     <div className="min-h-screen bg-transparent font-inter">

@@ -201,20 +201,47 @@ async function main() {
     // Step 2: Save encrypted file
     const encryptedPath = saveEncryptedFile(encryptionResult, storageDir);
     
-    // Step 3: Upload to 0G Storage
-    const uploadResult = await uploadTo0GStorage(encryptedPath);
+    // Step 3: Upload to 0G Storage (OPTIONAL - can skip for local development)
+    let uploadResult;
+    const skipUpload = process.env.SKIP_UPLOAD === 'true' || process.argv.includes('--skip-upload');
+    
+    if (skipUpload) {
+      console.log('\n⏭️  Skipping 0G Storage upload (using local file)');
+      uploadResult = {
+        uri: `local://quotes.enc`,
+        rootHash: encryptionResult.metadataHash,
+        txHash: null
+      };
+    } else {
+      try {
+        uploadResult = await uploadTo0GStorage(encryptedPath);
+      } catch (uploadError: any) {
+        console.warn('\n⚠️  0G Storage upload failed (this is OK for development)');
+        console.warn('Error:', uploadError.message);
+        console.warn('\n💡 Using local encrypted file instead.');
+        console.warn('To skip upload in future, add --skip-upload flag or set SKIP_UPLOAD=true\n');
+        uploadResult = {
+          uri: `local://quotes.enc`,
+          rootHash: encryptionResult.metadataHash,
+          txHash: null
+        };
+      }
+    }
     
     // Step 4: Output final results
     console.log('\n🎯 PHASE 1 RESULTS:');
     console.log('=' .repeat(60));
     console.log('encryptedURI:', uploadResult.uri);
     console.log('storageRootHash:', uploadResult.rootHash);
-    console.log('transactionHash:', uploadResult.txHash);
+    if (uploadResult.txHash) {
+      console.log('transactionHash:', uploadResult.txHash);
+    }
     console.log('metadataHash:', encryptionResult.metadataHash);
     console.log('encryptionKey:', `0x${encryptionResult.key.toString('hex')}`);
     console.log('iv:', `0x${encryptionResult.iv.toString('hex')}`);
     console.log('tag:', `0x${encryptionResult.tag.toString('hex')}`);
     console.log('\n✅ Phase 1 completed successfully!');
+    console.log('📁 Backend will use: 0g-INFT/storage/quotes.enc\n');
     
     // Save key and metadata for development use
     const devDataPath = path.join(storageDir, 'dev-keys.json');
