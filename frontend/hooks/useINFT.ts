@@ -83,6 +83,13 @@ export const INFT_ABI = [
     "stateMutability": "view",
     "type": "function"
   },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "burn",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
 ]
 
 /**
@@ -186,6 +193,48 @@ export function useAuthorizeINFT() {
   return {
     authorize,
     revoke,
+    isPending,
+    isConfirming,
+    isConfirmed,
+    error,
+    hash,
+  }
+}
+
+/**
+ * Custom hook for burning INFT tokens
+ */
+export function useBurnINFT() {
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  const [error, setError] = useState<string | null>(null)
+
+  const burn = async (tokenId: string | number) => {
+    setError(null)
+    
+    if (!tokenId) {
+      setError('Token ID is required')
+      return false
+    }
+
+    try {
+      await writeContract({
+        address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
+        abi: INFT_ABI,
+        functionName: 'burn',
+        args: [BigInt(tokenId)],
+      })
+      return true
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Unknown error'
+      setError(errorMessage)
+      console.error('Burn failed:', err)
+      return false
+    }
+  }
+
+  return {
+    burn,
     isPending,
     isConfirming,
     isConfirmed,

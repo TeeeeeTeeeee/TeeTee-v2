@@ -338,6 +338,31 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         return tokenId;
     }
     
+    /**
+     * @dev Burn an INFT token
+     * @param tokenId Token ID to burn
+     * 
+     * Requirements:
+     * - Caller must be the owner or approved
+     * - Clears all authorizations
+     * - Removes all metadata references
+     */
+    function burn(uint256 tokenId) external {
+        address owner = ownerOf(tokenId);
+        require(_isAuthorized(owner, _msgSender(), tokenId), "Caller is not owner nor approved");
+        
+        // Clear all authorizations before burning
+        _clearAuthorizations(tokenId);
+        
+        // Clear metadata references
+        delete encryptedURI[tokenId];
+        delete metadataHash[tokenId];
+        delete tokenMinter[tokenId];
+        
+        // Burn the token (automatically emits Transfer event)
+        _burn(tokenId);
+    }
+    
     // ================================
     // INTERNAL HELPER FUNCTIONS
     // ================================

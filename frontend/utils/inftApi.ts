@@ -106,7 +106,14 @@ export async function runStreamingInference(
     })
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+      let errorMsg = `HTTP ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMsg = errorData.error || errorMsg
+      } catch {
+        // If response is not JSON, use status code
+      }
+      throw new Error(errorMsg)
     }
 
     if (!response.body) {

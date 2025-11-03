@@ -9,7 +9,13 @@
     "build": "tsc",
     "serve": "node dist/index.js"
   },
-  "keywords": ["INFT", "0G", "Oracle", "AI", "NFT"],
+  "keywords": [
+    "INFT",
+    "0G",
+    "Oracle",
+    "AI",
+    "NFT"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -21,7 +27,8 @@
     "ethers": "^6.13.0",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
-    "opossum": "^8.1.4"
+    "opossum": "^8.1.4",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -33,5 +40,3 @@
     "typescript": "^5.5.2"
   }
 }
-
-
