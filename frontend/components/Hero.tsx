@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Spline from '@splinetool/react-spline';
 import { useRouter } from 'next/router';
-import Particles from './Particles';
 
 export const Hero = () => {
   const [isMounted, setIsMounted] = useState(false);
@@ -13,62 +13,64 @@ export const Hero = () => {
   }, []);
   
   return (
-    <section className="relative min-h-screen bg-transparent">
-      {/* Particles background - full-size container with absolute position 
-          Using z-0 to position it behind content but without fixed position
-          to allow proper mouse interaction */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
-        {isMounted && (
-          <Particles
-            particleColors={['#a78bfa', '#c4b5fd', '#ddd6fe']}
-            particleCount={200}
-            particleSpread={10}
-            speed={0.1}
-            particleBaseSize={100}
-            moveParticlesOnHover={true}
-            particleHoverFactor={1.5}
-            alphaParticles={true}
-            disableRotation={false}
-            className="w-full h-full"
-          />
-        )}
-      </div>
-      
-      {/* Content container with appropriate padding and transparent background 
-          Using pointer-events-none to allow mouse events to pass through to the particles */}
-      <div className="pt-48 pb-24 flex items-center relative z-10 pointer-events-none">
+    <section className="relative h-screen bg-transparent">
+      {/* Content container - Grid layout with text on left, Spline on right */}
+      <div className="pt-32 pb-16 flex items-center relative z-10 h-full">
         <div className="max-w-7xl mx-auto px-6 w-full">
-          <div className="flex flex-col items-center text-center">
-            {/* Main Title */}
-            <div className="mb-2 pointer-events-none">
-              <h2 className="text-[38px] font-bold text-gray-900">
-                This isn't just infrastructure.
-              </h2>
-              <h2 className="text-[48px] font-bold text-black mb-4">
-                This is <span style={{
+          <div className="grid grid-cols-2 gap-12 items-center">
+            {/* Left Side - Text Content */}
+            <div className="flex flex-col text-left pointer-events-none">
+              {/* Main Title */}
+              <div className="mb-6">
+                <h1 className="text-[120px] font-bold leading-none mb-6" style={{
                   background: 'linear-gradient(to right, #a78bfa, #d8b4fe)',
                   WebkitBackgroundClip: 'text',
                   backgroundClip: 'text',
-                  color: 'transparent',
-                  fontSize: 64
-                }}>TeeTee</span> — AI inference, reimagined for trust, scale, and resilience.
-              </h2>
+                  color: 'transparent'
+                }}>
+                  TeeTee
+                </h1>
+                <h2 className="text-[32px] font-medium text-gray-700 mb-4">
+                LLM Sharding Across Multiple Verifiable TEE with Decentralized Inference
+                </h2>
+              </div>
+
+              {/* Description */}
+              <p className="text-lg text-gray-600 mb-8 max-w-xl">
+                By sharding models across a decentralized TEE network, TeeTee removes the limits of cost, privacy, and scale.
+              </p>
+
+              {/* Call to Action Buttons - Using pointer-events-auto to ensure buttons are clickable */}
+              <div className="flex gap-6">
+                <button 
+                  onClick={() => router.push('/chat')}
+                  className="pointer-events-auto bg-gradient-to-r from-violet-400 to-purple-300 text-white px-8 py-3 rounded-full text-lg font-medium hover:opacity-90 transition-opacity"
+                >
+                  Run on TeeTee
+                </button>
+              </div>
             </div>
 
-            {/* Description */}
-            <p className="text-xl text-gray-600 max-w-5xl mb-8 pointer-events-none">
-              By sharding models across a decentralized TEE network, TeeTee removes the limits of cost, privacy, and scale. 
-              It's AI infrastructure without vendor lock-in — verifiable, resilient, and open to all.
-            </p>
-
-            {/* Call to Action Buttons - Using pointer-events-auto to ensure buttons are clickable */}
-            <div className="flex gap-6">
-              <button 
-                onClick={() => router.push('/chat')}
-                className="pointer-events-auto bg-gradient-to-r from-violet-400 to-purple-300 text-white px-8 py-3 rounded-full text-lg font-medium hover:opacity-90 transition-opacity"
-              >
-                Run on TeeTee
-              </button>
+            {/* Right Side - Spline 3D Scene */}
+            <div className="h-[600px] w-full relative overflow-visible" style={{ transform: 'scale(1.2)' }}>
+              {isMounted && (
+                <div style={{ 
+                  width: '100%', 
+                  height: '100%',
+                  mixBlendMode: 'multiply',
+                  background: 'transparent'
+                }}>
+                  <Spline
+                    scene="https://prod.spline.design/rUhzSyDm4oYYFG4p/scene.splinecode"
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                  {/* Solid rectangle to cover "Built with Spline" logo */}
+                  <div 
+                    className="absolute bottom-0 right-0 w-64 h-16 z-[9999]"
+                    style={{ pointerEvents: 'none', backgroundColor: '#f9f8ff' }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

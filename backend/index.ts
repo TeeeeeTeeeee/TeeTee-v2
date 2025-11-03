@@ -10,11 +10,23 @@ import { rateLimit } from 'express-rate-limit';
 import CircuitBreaker from 'opossum';
 
 // Load environment variables
-dotenv.config({ path: path.join(__dirname, '..', '.env') });
-dotenv.config({ path: path.join(__dirname, '.env') });
+// Load from project root first (shared config), then local backend config
+dotenv.config({ path: path.join(__dirname, '..', '..', '.env') }); // Project root
+dotenv.config({ path: path.join(__dirname, '..', '.env') }); // Backend directory
+dotenv.config({ path: path.join(__dirname, '.env') }); // Backend dist
 
 // Import 0G Storage SDK
 const { Indexer } = require('@0glabs/0g-ts-sdk');
+
+// Import network configuration
+import { 
+  getCurrentNetwork, 
+  getCurrentContractAddresses, 
+  getCurrentStorageIndexer,
+  getNetworkInfo,
+  validateNetworkConfig,
+  NETWORK_TYPE 
+} from './networkConfig';
 
 /**
  * INFT Oracle Backend Service
@@ -178,15 +190,30 @@ class INFTOracleService {
    * Initialize blockchain provider and contracts
    */
   private initializeBlockchain(): void {
-    const rpcUrl = process.env.GALILEO_RPC_URL || 'https://evmrpc-testnet.0g.ai';
-    const inftAddress = process.env.INFT_CONTRACT_ADDRESS || '0xB28dce039dDf7BC39aDE96984c8349DD5C6EcDC1';
+    // Validate network configuration
+    const validation = validateNetworkConfig();
+    if (!validation.valid) {
+      console.error('⚠️  Network configuration errors:');
+      validation.errors.forEach(error => console.error(`   - ${error}`));
+      if (NETWORK_TYPE === 'mainnet') {
+        throw new Error('Invalid mainnet configuration. Please set required environment variables.');
+      }
+    }
 
-    this.provider = new JsonRpcProvider(rpcUrl);
-    this.inftContract = new Contract(inftAddress, INFT_ABI, this.provider);
+    const network = getCurrentNetwork();
+    const contracts = getCurrentContractAddresses();
+    const networkInfo = getNetworkInfo();
+
+    this.provider = new JsonRpcProvider(network.rpcUrl);
+    this.inftContract = new Contract(contracts.INFT, INFT_ABI, this.provider);
 
     console.log('🔗 Blockchain initialized:');
-    console.log('  - RPC URL:', rpcUrl);
-    console.log('  - INFT Contract:', inftAddress);
+    console.log('  - Network:', networkInfo.name, `(${networkInfo.isMainnet ? 'MAINNET' : 'TESTNET'})`);
+    console.log('  - Chain ID:', networkInfo.chainId);
+    console.log('  - RPC URL:', network.rpcUrl);
+    console.log('  - Block Explorer:', network.blockExplorer);
+    console.log('  - INFT Contract:', contracts.INFT);
+    console.log('  - Storage Indexer:', networkInfo.storageIndexer);
   }
 
   /**
@@ -969,11 +996,14 @@ Respond with only the quote text. No prefatory wording.`;
    */
   public start(): void {
     this.app.listen(this.port, () => {
+      const networkInfo = getNetworkInfo();
+      
       console.log('\n╔════════════════════════════════════════════════════════════╗');
       console.log('║       🚀 INFT Oracle Backend Service Started              ║');
       console.log('╚════════════════════════════════════════════════════════════╝\n');
       console.log(`✅ Server running on http://localhost:${this.port}`);
-      console.log(`✅ Connected to 0G Galileo (Chain ID: 16602)`);
+      console.log(`✅ Connected to ${networkInfo.name} (Chain ID: ${networkInfo.chainId})`);
+      console.log(`✅ Network Mode: ${networkInfo.isMainnet ? '🔴 MAINNET' : '🟡 TESTNET'}`);
       console.log(`✅ INFT Contract: ${this.inftContract.target}`);
       console.log(`\n📡 Endpoints:`);
       console.log(`   - GET  /health         - Service health check`);
