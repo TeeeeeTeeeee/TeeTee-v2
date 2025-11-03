@@ -5,7 +5,16 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 const config = {
-  solidity: "0.8.20",
+  solidity: {
+    version: "0.8.20",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+      viaIR: true, // Fix for "Stack too deep" error
+    },
+  },
   networks: {
     // 0G Galileo Testnet
     "0g-testnet": {
