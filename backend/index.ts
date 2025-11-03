@@ -78,11 +78,15 @@ interface InferResponse {
 
 interface QuotesData {
   version: string;
-  quotes: string[];
+  quotes?: string[]; // Legacy support
+  systemPrompt?: string; // For general AI assistant
+  capabilities?: string[];
+  guidelines?: string[];
   metadata: {
     created: string;
     description: string;
-    totalQuotes: number;
+    totalQuotes?: number;
+    type?: string;
     category: string;
   };
 }
@@ -670,21 +674,26 @@ class INFTOracleService {
     }
 
     // Fallback: return demo data
-    console.log('Using demo quotes data');
+    console.log('Using demo AI assistant configuration');
     return {
       version: '1.0',
-      quotes: [
-        "The only way to do great work is to love what you do. - Steve Jobs",
-        "Innovation distinguishes between a leader and a follower. - Steve Jobs",
-        "Stay hungry, stay foolish. - Steve Jobs",
-        "The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt",
-        "Success is not final, failure is not fatal: it is the courage to continue that counts. - Winston Churchill"
+      systemPrompt: 'You are a helpful AI assistant powered by TeeTee. Provide accurate, concise, and friendly responses.',
+      capabilities: [
+        'Answer general knowledge questions',
+        'Explain concepts simply',
+        'Help with technical problems',
+        'Provide helpful suggestions'
+      ],
+      guidelines: [
+        'Be concise and clear',
+        'Provide accurate information',
+        'Be helpful and friendly'
       ],
       metadata: {
         created: new Date().toISOString(),
-        description: 'Inspirational quotes',
-        totalQuotes: 5,
-        category: 'motivation'
+        description: 'General purpose AI assistant (demo)',
+        type: 'ai-assistant',
+        category: 'general'
       }
     };
   }
@@ -848,11 +857,31 @@ class INFTOracleService {
       throw new Error('LLM API key not configured');
     }
 
-    // Build context from quotes
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    let prompt: string;
 
-    const prompt = `You are a concise assistant. Use the provided context strictly. Return a single inspirational quote tailored to the user's input.
+    // Check if this is the new general AI format or legacy quotes format
+    if (quotesData.systemPrompt) {
+      // New general purpose AI assistant format
+      const capabilities = quotesData.capabilities?.join('\n- ') || '';
+      const guidelines = quotesData.guidelines?.join('\n- ') || '';
+      
+      prompt = `${quotesData.systemPrompt}
+
+Your Capabilities:
+- ${capabilities}
+
+Guidelines:
+- ${guidelines}
+
+User Question: "${input}"
+
+Provide a helpful, concise response:`;
+    } else if (quotesData.quotes && quotesData.quotes.length > 0) {
+      // Legacy quotes format
+      const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
+      const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+
+      prompt = `You are a concise assistant. Use the provided context strictly. Return a single inspirational quote tailored to the user's input.
 
 Input: "${input}"
 
@@ -860,6 +889,10 @@ Context quotes:
 ${context}
 
 Respond with only the quote text. No prefatory wording.`;
+    } else {
+      // Fallback to basic assistant
+      prompt = `You are a helpful AI assistant. Provide a concise and accurate response to: "${input}"`;
+    }
 
     try {
       // Use circuit breaker for LLM call
@@ -870,9 +903,12 @@ Respond with only the quote text. No prefatory wording.`;
       
       // Fallback policy based on configuration
       if (this.llmConfig.devFallback && !error?.message?.includes('LLM_CIRCUIT_OPEN')) {
-        console.log('⚠️ Using random quote fallback');
-        const randomIndex = Math.floor(Math.random() * quotesData.quotes.length);
-        return quotesData.quotes[randomIndex];
+        console.log('⚠️ Using fallback response');
+        if (quotesData.quotes && quotesData.quotes.length > 0) {
+          const randomIndex = Math.floor(Math.random() * quotesData.quotes.length);
+          return quotesData.quotes[randomIndex];
+        }
+        return "I'm here to help! Please try your question again.";
       }
       
       throw error;
@@ -891,10 +927,34 @@ Respond with only the quote text. No prefatory wording.`;
       throw new Error('LLM API key not configured');
     }
 
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    let prompt: string;
 
-    const prompt = `You are a concise assistant. Return a single inspirational quote tailored to: "${input}"\n\nContext:\n${context}`;
+    // Check if this is the new general AI format or legacy quotes format
+    if (quotesData.systemPrompt) {
+      // New general purpose AI assistant format
+      const capabilities = quotesData.capabilities?.join('\n- ') || '';
+      const guidelines = quotesData.guidelines?.join('\n- ') || '';
+      
+      prompt = `${quotesData.systemPrompt}
+
+Your Capabilities:
+- ${capabilities}
+
+Guidelines:
+- ${guidelines}
+
+User Question: "${input}"
+
+Provide a helpful, concise response:`;
+    } else if (quotesData.quotes && quotesData.quotes.length > 0) {
+      // Legacy quotes format
+      const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
+      const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+      prompt = `You are a concise assistant. Return a single inspirational quote tailored to: "${input}"\n\nContext:\n${context}`;
+    } else {
+      // Fallback to basic assistant
+      prompt = `You are a helpful AI assistant. Provide a concise and accurate response to: "${input}"`;
+    }
 
     try {
       const response = await axios.post(

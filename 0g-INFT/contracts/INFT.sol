@@ -43,6 +43,9 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     /// @dev Mapping from token ID to array of authorized user addresses for enumeration
     mapping(uint256 => address[]) private _authorizedUsersArray;
     
+    /// @dev Mapping from token ID to original minter/issuer address
+    mapping(uint256 => address) public tokenMinter;
+    
     /// @dev Oracle/verifier contract for proof verification
     IDataVerifierAdapter public immutable dataVerifier;
     
@@ -325,6 +328,9 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         // Store metadata references (off-chain pointers only, per ERC-7857)
         encryptedURI[tokenId] = _encryptedURI;
         metadataHash[tokenId] = _metadataHash;
+        
+        // Track the original minter/issuer
+        tokenMinter[tokenId] = _msgSender();
         
         // Mint the token
         _mint(to, tokenId);

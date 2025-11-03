@@ -106,7 +106,13 @@ const ChatPage = () => {
   const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
   
   // Check if user has INFT authorization
-  const { isAuthorized: hasINFT, refetch: refetchINFT } = useCheckINFTAuthorization(1, address);
+  // Only recognize INFTs issued by the specified address (set in env)
+  const ALLOWED_INFT_ISSUER = process.env.NEXT_PUBLIC_INFT_ISSUER_ADDRESS; // Your wallet address that mints INFTs
+  const { isAuthorized: hasINFT, refetch: refetchINFT } = useCheckINFTAuthorization(
+    1, 
+    address,
+    ALLOWED_INFT_ISSUER // Only accept INFTs from this issuer
+  );
   
   // Toggle for using INFT vs token-based inference
   const [useINFTInference, setUseINFTInference] = useState(true);

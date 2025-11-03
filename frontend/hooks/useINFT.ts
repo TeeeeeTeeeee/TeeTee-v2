@@ -56,6 +56,13 @@ export const INFT_ABI = [
     "type": "function"
   },
   {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "tokenMinter",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
     "name": "balanceOf",
     "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
@@ -189,9 +196,15 @@ export function useAuthorizeINFT() {
 
 /**
  * Custom hook to check if a user is authorized for an INFT
+ * Also verifies the INFT was issued by an allowed issuer
  */
-export function useCheckINFTAuthorization(tokenId: number = 1, userAddress?: string) {
-  const { data: isAuthorized, refetch } = useReadContract({
+export function useCheckINFTAuthorization(
+  tokenId: number = 1, 
+  userAddress?: string,
+  allowedIssuer?: string // Optional: if provided, only INFTs from this issuer are valid
+) {
+  // Check if user is authorized for the INFT
+  const { data: isAuthorized, refetch: refetchAuth } = useReadContract({
     address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
     abi: INFT_ABI,
     functionName: 'isAuthorized',
@@ -201,9 +214,30 @@ export function useCheckINFTAuthorization(tokenId: number = 1, userAddress?: str
     },
   })
 
+  // Check who minted the INFT
+  const { data: minter, refetch: refetchMinter } = useReadContract({
+    address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
+    abi: INFT_ABI,
+    functionName: 'tokenMinter',
+    args: [BigInt(tokenId)],
+    query: {
+      enabled: !!allowedIssuer, // Only check minter if we care about the issuer
+    },
+  })
+
+  // User is authorized if:
+  // 1. They have authorization for the token, AND
+  // 2. If allowedIssuer is specified, the token must be from that issuer
+  const isValidAuthorization = !!isAuthorized && 
+    (!allowedIssuer || (minter?.toLowerCase() === allowedIssuer.toLowerCase()))
+
   return {
-    isAuthorized: !!isAuthorized,
-    refetch,
+    isAuthorized: isValidAuthorization,
+    minter: minter as string | undefined,
+    refetch: () => {
+      refetchAuth()
+      if (allowedIssuer) refetchMinter()
+    },
   }
 }
 
