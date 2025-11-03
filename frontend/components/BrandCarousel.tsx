@@ -14,7 +14,7 @@ export const BrandCarousel = () => {
 
   const brandsRow2 = [
     { name: 'GitHub', logo: '/logos/github.png' },
-    { name: 'MongoDB', logo: '/logos/mongodb.png' },
+    { name: 'OpenAI', logo: '/logos/openAI.png' },
     { name: 'Vercel', logo: '/logos/vercel.png' },
     { name: 'Zapier', logo: '/logos/zapier.png' },
   ];
