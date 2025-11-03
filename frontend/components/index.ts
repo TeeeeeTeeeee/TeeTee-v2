@@ -1,5 +1,6 @@
 export { Navbar } from './Navbar';
 export { Hero } from './Hero';
+export { BrandCarousel } from './BrandCarousel';
 export { HowItWorks } from './HowItWorks';
 export { Features } from './Features';
 export { CallToAction } from './CallToAction';
