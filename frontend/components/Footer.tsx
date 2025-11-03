@@ -6,6 +6,27 @@ export const Footer = () => {
   return (
     <footer className="py-16 px-6 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
         <div className="max-w-7xl mx-auto">
+          {/* Large Brand Text with TextPressure at the top */}
+          <div className="mb-10">
+            <div style={{ position: 'relative', height: '290px', width: '100%', padding: '0', overflow: 'visible' }}>
+              <TextPressure
+                text="TEETEE"
+                flex={false} /* Set to false to allow custom positioning */
+                alpha={false}
+                stroke={false}
+                width={true}
+                weight={true}
+                italic={true}
+                textColor="linear-gradient(to right, #a78bfa, #d8b4fe)"
+                strokeColor="#ddd6fe" 
+                fontFamily="Geist, Inter, sans-serif"
+                fontUrl=""
+                minFontSize={40} // Increased font size
+                className="w-full"
+              />
+            </div>
+          </div>
+
           {/* Contact and Social Media Grid */}
           <div className="grid grid-cols-4 gap-20 mb-4">
             {/* Introduction Section */}
@@ -37,32 +58,11 @@ export const Footer = () => {
               </div>
             </div>
           </div>
-
-          {/* Large Brand Text with TextPressure directly above the horizontal line */}
-          <div className="mt-10 mb-0">
-            <div style={{ position: 'relative', height: '290px', width: '100%', padding: '0', overflow: 'visible' }}>
-              <TextPressure
-                text="TEETEE"
-                flex={false} /* Set to false to allow custom positioning */
-                alpha={false}
-                stroke={false}
-                width={true}
-                weight={true}
-                italic={true}
-                textColor="linear-gradient(to right, #a78bfa, #d8b4fe)"
-                strokeColor="#ddd6fe" 
-                fontFamily="Geist, Inter, sans-serif"
-                fontUrl=""
-                minFontSize={40} // Increased font size
-                className="w-full"
-              />
-            </div>
             
-            {/* Horizontal line with copyright and policies directly below the brand name */}
-            <div className="border-t flex justify-between items-center pt-0">
-              <p className="text-sm">©TeeTee</p>
-              <p className="text-sm">POLICIES</p>
-            </div>
+          {/* Horizontal line with copyright and policies */}
+          <div className="border-t flex justify-between items-center pt-4 mt-10">
+            <p className="text-sm">©TeeTee</p>
+            <p className="text-sm">POLICIES</p>
           </div>
         </div>
     </footer>

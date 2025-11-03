@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 
@@ -45,6 +45,31 @@ const steps: Step[] = [
 export const HowItWorks = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [highlightedCard, setHighlightedCard] = useState<number | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsVisible(entry.isIntersecting);
+      },
+      {
+        threshold: 0.2,
+        rootMargin: '0px'
+      }
+    );
+
+    const currentRef = sectionRef.current;
+    if (currentRef) {
+      observer.observe(currentRef);
+    }
+
+    return () => {
+      if (currentRef) {
+        observer.unobserve(currentRef);
+      }
+    };
+  }, []);
 
   // Handle keyboard key press
   const handleKeyPress = (keyValue: string | number) => {
@@ -79,8 +104,21 @@ export const HowItWorks = () => {
   const isLastStep = currentStep === steps.length - 1;
 
   return (
-    <section className="py-20 bg-transparent">
-      <div className="max-w-7xl mx-auto px-6">
+    <>
+      <style>{`
+        .how-it-works-section {
+          opacity: 0;
+          transform: translateY(50px);
+          transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+        }
+
+        .how-it-works-section.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      `}</style>
+      <section ref={sectionRef} className={`py-20 bg-transparent how-it-works-section ${isVisible ? 'visible' : ''}`}>
+        <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-2 gap-10">
           {/* Left: Header Content + Content Display Card Container */}
           <div className="h-[500px] flex flex-col">
@@ -180,7 +218,8 @@ export const HowItWorks = () => {
             </div>
           </div>
         </div>
-      </div>
-    </section>
+        </div>
+      </section>
+    </>
   );
 };
