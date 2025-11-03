@@ -40,7 +40,7 @@ function AnimatedTestimonialsDemo() {
   ];
   return (
     <section className="bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
-      <AnimatedTestimonials testimonials={testimonials} />
+      <AnimatedTestimonials testimonials={testimonials} autoplay={true} />
     </section>
   );
 }

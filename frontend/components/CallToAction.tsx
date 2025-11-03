@@ -88,11 +88,11 @@ export const CallToAction = () => {
             `}</style>
             <div ref={sectionRef} className={`max-w-5xl mx-auto flex flex-col items-center justify-center px-4 py-20 faq-section ${isVisible ? 'visible' : ''}`}>
                 <div className="w-full">
-                    <p className="text-indigo-600 text-lg font-medium text-center">FAQ's</p>
-                    <h1 className="text-6xl font-semibold text-center mt-4">
+                    <p className="text-indigo-600 text-4xl font-medium text-center">FAQ's</p>
+                    <h1 className="text-6xl font-semibold text-center mt-6">
                         Looking for answer <span className="jump-animation">?</span>
                     </h1>
-                    <p className="text-3xl text-slate-500 mt-6 pb-12 text-center">
+                    <p className="text-3xl text-slate-500 mt-10 pb-12 text-center">
                        
                     </p>
                     {faqs.map((faq, index) => (

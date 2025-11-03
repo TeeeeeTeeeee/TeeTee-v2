@@ -9,7 +9,7 @@ export const Footer = () => {
     <footer className="py-16 px-6 bg-gradient-to-r from-violet-100/40 via-purple-100/30 to-violet-100/40">
         <div className="max-w-7xl mx-auto">
           {/* Large Brand Text with TextPressure at the top */}
-          <div className="mb-10 pt-10">
+          <div className="mb-10 pt-1">
             <div style={{ position: 'relative', height: '290px', width: '100%', padding: '0', overflow: 'visible' }}>
               <TextPressure
                 text="TEETEE"
@@ -21,8 +21,8 @@ export const Footer = () => {
                 italic={true}
                 textColor="linear-gradient(to right, #a78bfa, #d8b4fe)"
                 strokeColor="#ddd6fe" 
-                fontFamily="Geist, Inter, sans-serif"
-                fontUrl=""
+                fontFamily="Compressa VF"
+                fontUrl="https://res.cloudinary.com/dr6lvwubh/raw/upload/v1529908256/CompressaPRO-GX.woff2"
                 minFontSize={40}
                 className="w-full"
               />
@@ -34,7 +34,7 @@ export const Footer = () => {
             {/* Introduction Section */}
             <div className="col-span-2">
               <h3 className="text-2xl font-bold mb-0 leading-relaxed">
-                Revolutionizing AI inference through decentralized TEE networks. Secure, scalable, and verifiable computation for the future
+                Revolutionizing AI inference through decentralized TEE networks.
               </h3>
             </div>
 
