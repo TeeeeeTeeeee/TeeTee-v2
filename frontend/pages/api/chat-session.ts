@@ -1,7 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Readable } from 'node:stream';
 import { uploadStream } from '../../utils/storage';
-import { addSession, updateSession } from '../../utils/json-storage';
 import { connectToDatabase } from '../../utils/mongodb';
 
 // Types expected from the client
@@ -74,84 +73,50 @@ export default async function handler(
     // Upload to 0G storage
     const { rootHash, txHash } = await uploadStream(stream, fname);
 
-    // Save or update metadata in local JSON storage
-    // Important: Always replace old entry with new one containing latest root hash
+    // Save or update metadata in MongoDB only
     let saved = false;
     let returnedSessionId = sessionId;
     
-    try {
-      if (sessionId) {
-        // Update existing session with NEW root hash and tx hash
-        // This removes the old hash and keeps only the latest version
-        const updated = updateSession(sessionId, {
-          rootHash: rootHash || null,
-          txHash,
-          messageCount: messages.length,
-          filename: fname, // Keep filename updated too
-          preview, // Add preview field
-        });
-        saved = !!updated;
-        
-        console.log(`Updated session ${sessionId} with new root hash: ${rootHash}`);
-      } else {
-        // Create new session
-        const newSession = addSession({
-          walletAddress: walletAddress.toLowerCase(), // Normalize to lowercase
-          filename: fname,
-          rootHash: rootHash || null,
-          txHash,
-          messageCount: messages.length,
-          preview, // Add preview field
-        });
-        returnedSessionId = newSession._id;
-        saved = true;
-        
-        console.log(`Created new session ${returnedSessionId} with root hash: ${rootHash}`);
-      }
-    } catch (storageError: any) {
-      console.error('JSON storage save error:', storageError);
-      // Continue even if local storage fails - the file is still uploaded to 0G
-    }
-
-    // Also save to MongoDB
-    try {
-      const { db } = await connectToDatabase();
-      const chatSessionsCollection = db.collection('chatSessions');
-      
-      if (sessionId) {
-        // Update existing session in MongoDB
-        await chatSessionsCollection.updateOne(
-          { _id: sessionId },
-          {
-            $set: {
-              rootHash: rootHash || null,
-              txHash,
-              messageCount: messages.length,
-              filename: fname,
-              preview,
-              updatedAt: new Date().toISOString(),
-            }
+    const { db } = await connectToDatabase();
+    const chatSessionsCollection = db.collection('chatSessions');
+    
+    if (sessionId) {
+      // Update existing session in MongoDB
+      const result = await chatSessionsCollection.updateOne(
+        { sessionId: sessionId },
+        {
+          $set: {
+            rootHash: rootHash || null,
+            txHash,
+            messageCount: messages.length,
+            filename: fname,
+            preview,
+            updatedAt: new Date().toISOString(),
           }
-        );
-        console.log(`Updated MongoDB session ${sessionId}`);
-      } else {
-        // Insert new session into MongoDB
-        await chatSessionsCollection.insertOne({
-          _id: returnedSessionId,
-          walletAddress: walletAddress.toLowerCase(),
-          filename: fname,
-          rootHash: rootHash || null,
-          txHash,
-          messageCount: messages.length,
-          preview,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-        console.log(`Created MongoDB session ${returnedSessionId}`);
-      }
-    } catch (mongoError: any) {
-      console.error('MongoDB save error:', mongoError);
-      // Continue even if MongoDB save fails - the file is still uploaded and saved locally
+        }
+      );
+      saved = result.modifiedCount > 0;
+      returnedSessionId = sessionId;
+      console.log(`Updated MongoDB session ${sessionId} with new root hash: ${rootHash}`);
+    } else {
+      // Generate new session ID
+      const { randomUUID } = await import('crypto');
+      returnedSessionId = randomUUID();
+      
+      // Insert new session into MongoDB
+      await chatSessionsCollection.insertOne({
+        sessionId: returnedSessionId,
+        walletAddress: walletAddress.toLowerCase(),
+        filename: fname,
+        rootHash: rootHash || null,
+        txHash,
+        messageCount: messages.length,
+        preview,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      saved = true;
+      console.log(`Created MongoDB session ${returnedSessionId} with root hash: ${rootHash}`);
     }
 
     return res.status(200).json({ 

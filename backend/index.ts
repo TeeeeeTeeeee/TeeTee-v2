@@ -862,7 +862,7 @@ class INFTOracleService {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': this.llmConfig.apiKey,
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
             'Accept': 'application/json'
           }
         }
@@ -928,7 +928,7 @@ class INFTOracleService {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': this.llmConfig.apiKey,
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
             'Accept': 'application/json'
           }
         }
