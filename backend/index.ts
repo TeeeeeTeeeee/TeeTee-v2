@@ -3,7 +3,7 @@ import cors from 'cors';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JsonRpcProvider, Contract } from 'ethers';
+import { JsonRpcProvider, Contract, Wallet } from 'ethers';
 import * as dotenv from 'dotenv';
 import axios, { AxiosResponse } from 'axios';
 import { rateLimit } from 'express-rate-limit';
@@ -48,7 +48,8 @@ const INFT_ABI = [
   "function isAuthorized(uint256 tokenId, address user) view returns (bool)",
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function encryptedURI(uint256 tokenId) view returns (string)",
-  "function metadataHash(uint256 tokenId) view returns (bytes32)"
+  "function metadataHash(uint256 tokenId) view returns (bytes32)",
+  "function authorizeUsage(uint256 tokenId, address user)"
 ];
 
 interface InferRequest {
@@ -160,6 +161,8 @@ class INFTOracleService {
   private app: express.Application;
   private provider!: JsonRpcProvider;
   private inftContract!: Contract;
+  private ownerWallet!: Wallet;
+  private inftContractWithSigner!: Contract;
   private devKeys!: DevKeys;
   private llmConfig!: LLMConfig;
   private llmCircuitBreaker!: CircuitBreaker<[string], string>;
@@ -208,6 +211,17 @@ class INFTOracleService {
 
     this.provider = new JsonRpcProvider(network.rpcUrl);
     this.inftContract = new Contract(contracts.INFT, INFT_ABI, this.provider);
+
+    // Initialize owner wallet for auto-authorization
+    const privateKey = process.env.PRIVATE_KEY || process.env.OWNER_PRIVATE_KEY;
+    if (!privateKey) {
+      console.warn('⚠️  Warning: No PRIVATE_KEY found in .env - Auto-authorization will be disabled');
+    } else {
+      this.ownerWallet = new Wallet(privateKey, this.provider);
+      this.inftContractWithSigner = new Contract(contracts.INFT, INFT_ABI, this.ownerWallet);
+      console.log('🔑 Owner wallet initialized for auto-authorization');
+      console.log('  - Owner Address:', this.ownerWallet.address);
+    }
 
     console.log('🔗 Blockchain initialized:');
     console.log('  - Network:', networkInfo.name, `(${networkInfo.isMainnet ? 'MAINNET' : 'TESTNET'})`);
@@ -446,6 +460,9 @@ class INFTOracleService {
     // Streaming inference endpoint
     this.app.post('/infer/stream', this.handleStreamingInferRequest.bind(this));
 
+    // Auto-authorize INFT endpoint (owner only)
+    this.app.post('/authorize-inft', this.handleAuthorizeINFT.bind(this));
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({ error: 'Endpoint not found' });
@@ -671,6 +688,92 @@ class INFTOracleService {
     } catch (error: any) {
       console.error('Streaming error:', error);
       res.status(500).json({ error: error?.message || 'Unknown error' });
+    }
+  }
+
+  /**
+   * Handle auto-authorization of INFT
+   * Uses contract owner's private key to automatically authorize users
+   */
+  private async handleAuthorizeINFT(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { tokenId, userAddress } = req.body;
+      const requestId = req.headers['x-request-id'] as string;
+
+      // Validate request
+      if (!tokenId || !userAddress) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Missing required fields: tokenId and userAddress' 
+        });
+        return;
+      }
+
+      // Check if wallet is initialized
+      if (!this.ownerWallet || !this.inftContractWithSigner) {
+        console.error(`[${requestId}] Auto-authorization failed: No owner wallet configured`);
+        res.status(500).json({ 
+          success: false,
+          error: 'Auto-authorization not available. PRIVATE_KEY not configured.' 
+        });
+        return;
+      }
+
+      console.log(`[${requestId}] Auto-authorizing user ${userAddress} for INFT #${tokenId}...`);
+
+      // Check if token exists
+      try {
+        const owner = await this.inftContract.ownerOf(tokenId);
+        console.log(`[${requestId}] INFT #${tokenId} owner: ${owner}`);
+      } catch (error) {
+        console.error(`[${requestId}] INFT #${tokenId} does not exist`);
+        res.status(404).json({ 
+          success: false,
+          error: `INFT token #${tokenId} does not exist` 
+        });
+        return;
+      }
+
+      // Check if already authorized
+      const alreadyAuthorized = await this.inftContract.isAuthorized(tokenId, userAddress);
+      if (alreadyAuthorized) {
+        console.log(`[${requestId}] User ${userAddress} is already authorized for INFT #${tokenId}`);
+        res.json({ 
+          success: true,
+          message: 'User is already authorized',
+          txHash: null
+        });
+        return;
+      }
+
+      // Call authorizeUsage with owner's wallet
+      console.log(`[${requestId}] Sending authorization transaction...`);
+      const tx = await this.inftContractWithSigner.authorizeUsage(tokenId, userAddress);
+      
+      console.log(`[${requestId}] Transaction submitted: ${tx.hash}`);
+      console.log(`[${requestId}] Waiting for confirmation...`);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      
+      console.log(`[${requestId}] ✅ Authorization confirmed! Block: ${receipt.blockNumber}`);
+      
+      res.json({ 
+        success: true,
+        message: 'User authorized successfully',
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber
+      });
+
+    } catch (error: any) {
+      const requestId = req.headers['x-request-id'] as string;
+      console.error(`[${requestId}] Auto-authorization error:`, error);
+      
+      res.status(500).json({ 
+        success: false,
+        error: error?.message || 'Authorization failed',
+        details: error?.reason || error?.code
+      });
     }
   }
 
@@ -1042,10 +1145,11 @@ Provide a helpful, concise response:`;
       console.log(`✅ Network Mode: ${networkInfo.isMainnet ? '🔴 MAINNET' : '🟡 TESTNET'}`);
       console.log(`✅ INFT Contract: ${this.inftContract.target}`);
       console.log(`\n📡 Endpoints:`);
-      console.log(`   - GET  /health         - Service health check`);
-      console.log(`   - GET  /llm/health     - LLM health check`);
-      console.log(`   - POST /infer          - Run inference`);
-      console.log(`   - POST /infer/stream   - Streaming inference`);
+      console.log(`   - GET  /health           - Service health check`);
+      console.log(`   - GET  /llm/health       - LLM health check`);
+      console.log(`   - POST /authorize-inft   - Auto-authorize INFT (owner only)`);
+      console.log(`   - POST /infer            - Run inference`);
+      console.log(`   - POST /infer/stream     - Streaming inference`);
       console.log(`\n🔐 Security:`);
       console.log(`   - Rate limiting: 30 req/min`);
       console.log(`   - Input sanitization: enabled`);

@@ -11,7 +11,7 @@ import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
-import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
+import { useMintINFT, INFT_ABI, CONTRACT_ADDRESSES as INFT_ADDRESSES } from '../hooks/useINFT';
 import { useRouter } from 'next/router';
 
 interface AddModelFormData {
@@ -115,9 +115,13 @@ const DashboardPage = () => {
   const { address: connectedAddress } = useAccount();
   const config = useConfig();
   
-  // INFT hooks for minting and authorization
+  // INFT hooks for minting
   const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
-  const { authorize: authorizeINFT, isPending: isAuthorizing, isConfirmed: isAuthConfirmed } = useAuthorizeINFT();
+  
+  // Backend authorization state
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
+  const [isAuthConfirmed, setIsAuthConfirmed] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Fetch models hosted by the current user
   useEffect(() => {
@@ -330,34 +334,66 @@ const DashboardPage = () => {
     }
   }, [isConfirmed, connectedAddress, registeredModelName]);
   
-  // Effect to handle successful INFT mint - then authorize the user
+  // Effect to handle successful INFT mint - then auto-authorize via backend
   React.useEffect(() => {
     const handleMintSuccess = async () => {
       if (isMintConfirmed && connectedAddress) {
-        console.log('INFT minted, authorizing user...');
+        console.log('INFT minted, auto-authorizing user via backend...');
+        
+        setIsAuthorizing(true);
+        setAuthError(null);
         
         try {
-          const tokenId = 1;
-          await authorizeINFT(tokenId, connectedAddress);
+          // Get the current token ID counter from the contract
+          // Note: getCurrentTokenId() returns the NEXT token to be minted, so we subtract 1
+          const nextTokenId = await readContract(config, {
+            address: INFT_ADDRESSES.INFT as `0x${string}`,
+            abi: INFT_ABI,
+            functionName: 'getCurrentTokenId',
+            args: []
+          }) as bigint;
+          
+          const tokenId = Number(nextTokenId) - 1; // Subtract 1 to get the just-minted token
+          console.log('Minted INFT tokenId:', tokenId);
+          
+          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+          
+          const response = await fetch(`${backendUrl}/authorize-inft`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              tokenId,
+              userAddress: connectedAddress
+            })
+          });
+          
+          const data = await response.json();
+          
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Authorization failed');
+          }
+          
+          console.log('Authorization successful:', data.txHash);
+          setIsAuthConfirmed(true);
+          setIsAuthorizing(false);
         } catch (error) {
-          console.error('Failed to authorize user:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          console.error('Failed to authorize user:', errorMessage);
+          setAuthError(errorMessage);
+          setIsAuthorizing(false);
         }
       }
     };
     
     handleMintSuccess();
-  }, [isMintConfirmed, connectedAddress]);
+  }, [isMintConfirmed, connectedAddress, config]);
   
-  // Effect to auto-close modal after successful authorization
+  // Effect to log successful authorization (no auto-close, user must click Close button)
   React.useEffect(() => {
     if (isAuthConfirmed) {
-      console.log('Authorization confirmed, closing modal in 2 seconds...');
-      const timer = setTimeout(() => {
-        setShowClaimINFTModal(false);
-        setRegisteredModelName('');
-      }, 2000);
-      
-      return () => clearTimeout(timer);
+      console.log('✅ Authorization confirmed! User can now close the modal.');
     }
   }, [isAuthConfirmed]);
   
@@ -582,6 +618,8 @@ const DashboardPage = () => {
                 {myHostedModels.map((model) => {
                   const isComplete = model.isComplete || (model.host2 && model.host2 !== '0x0000000000000000000000000000000000000000');
                   const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+                  const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+                  const isBothHosts = isHost1 && isHost2;
                   
                   return (
                     <motion.div
@@ -605,37 +643,79 @@ const DashboardPage = () => {
                       </div>
 
                       <div className="space-y-2 text-xs mb-4">
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Your Role:</span>
-                          <span className="font-semibold text-violet-600">
-                            {isHost1 ? 'Host 1 (Primary)' : 'Host 2 (Secondary)'}
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Shard:</span>
-                          <span className="text-gray-700">
-                            {isHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
-                          </span>
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Your URL:</span>
-                          <span className="font-mono text-gray-700 break-all">
-                            {isHost1 ? model.shardUrl1?.slice(0, 40) : model.shardUrl2?.slice(0, 40)}...
-                          </span>
-                        </div>
+                        {/* Shard(s) */}
+                        {isBothHosts ? (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Shard 1:</span>
+                              <span className="text-gray-700">Lower Layers (1-50)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">URL 1:</span>
+                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                                {model.shardUrl1?.slice(0, 35)}...
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Shard 2:</span>
+                              <span className="text-gray-700">Upper Layers (51-100)</span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">URL 2:</span>
+                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                                {model.shardUrl2?.slice(0, 35)}...
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Shard:</span>
+                              <span className="text-gray-700">
+                                {isHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Your URL:</span>
+                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                                {isHost1 ? model.shardUrl1?.slice(0, 35) : model.shardUrl2?.slice(0, 35)}...
+                              </span>
+                            </div>
+                          </>
+                        )}
+                        
                         <div className="flex items-start gap-2">
                           <span className="text-gray-500">Pool Balance:</span>
                           <span className="text-gray-700 font-semibold">{model.poolBalance?.toString() || '0'} credits</span>
                         </div>
-                        <div className="flex items-start gap-2">
-                          <span className="text-gray-500">Your Time:</span>
-                          <span className="text-gray-700">
-                            {isHost1 
-                              ? model.totalTimeHost1?.toString() || '0' 
-                              : model.totalTimeHost2?.toString() || '0'
-                            } seconds
-                          </span>
-                        </div>
+                        
+                        {/* Total Time */}
+                        {isBothHosts ? (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Time (Shard 1):</span>
+                              <span className="text-gray-700">
+                                {model.totalTimeHost1?.toString() || '0'} seconds
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="text-gray-500">Time (Shard 2):</span>
+                              <span className="text-gray-700">
+                                {model.totalTimeHost2?.toString() || '0'} seconds
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-500">Your Time:</span>
+                            <span className="text-gray-700">
+                              {isHost1 
+                                ? model.totalTimeHost1?.toString() || '0' 
+                                : model.totalTimeHost2?.toString() || '0'
+                              } seconds
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {isComplete ? (
@@ -1052,11 +1132,18 @@ const DashboardPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={(e) => {
+              // Prevent closing modal by clicking backdrop during minting/authorizing
+              if (!isMinting && !isAuthorizing) {
+                e.stopPropagation();
+              }
+            }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
               {/* Header with gradient */}
               <div className="bg-gradient-to-r from-violet-400 to-purple-300 px-6 py-4 text-white sticky top-0 z-10">
@@ -1067,19 +1154,29 @@ const DashboardPage = () => {
                     </svg>
                     <h2 className="text-xl font-bold">{isSecondHost ? 'Joined Successfully!' : 'Registration Successful!'}</h2>
                   </div>
-                  <button
-                    onClick={() => {
-                      setShowClaimINFTModal(false);
-                      setRegisteredModelName('');
-                      setIsSecondHost(false);
-                    }}
-                    disabled={isMinting || isAuthorizing}
-                    className="text-white hover:text-violet-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                  {!isMinting && !isAuthorizing && (
+                    <button
+                      onClick={() => {
+                        setShowClaimINFTModal(false);
+                        setRegisteredModelName('');
+                        setIsSecondHost(false);
+                        setIsAuthConfirmed(false);
+                        setAuthError(null);
+                      }}
+                      className="text-white hover:text-violet-100 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                  {(isMinting || isAuthorizing) && (
+                    <div className="text-white opacity-50 cursor-not-allowed" title="Please wait for the process to complete">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
                 <p className="text-violet-100 text-sm">
                   {isSecondHost ? 'You are now the second host for this model' : 'Your model is now registered on the network'}
@@ -1140,71 +1237,199 @@ const DashboardPage = () => {
                   </ul>
                 </div>
 
-                {/* Action Section */}
-                <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-3 mb-4">
-                  <p className="text-xs font-semibold text-gray-700 mb-1.5">Next Steps:</p>
-                  <ol className="text-xs text-gray-600 space-y-0.5 ml-4 list-decimal">
-                    <li>Click "Claim My INFT" to mint your token</li>
-                    <li>Approve the transaction in your wallet</li>
-                    <li>You'll be automatically authorized</li>
-                    <li>Start using AI inference in Chat!</li>
-                  </ol>
-                </div>
+                {/* Progress Steps - Show during minting/authorizing */}
+                {(isMinting || isAuthorizing || isAuthConfirmed) && (
+                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
+                    <p className="text-xs font-semibold text-gray-700 mb-3">Progress:</p>
+                    
+                    {/* Step 1: Minting */}
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+                        isAuthConfirmed || isAuthorizing 
+                          ? 'bg-green-500' 
+                          : isMinting 
+                          ? 'bg-violet-500' 
+                          : 'bg-gray-300'
+                      }`}>
+                        {isAuthConfirmed || isAuthorizing ? (
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : isMinting ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        ) : (
+                          <span className="text-white text-xs font-bold">1</span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-semibold ${
+                          isAuthConfirmed || isAuthorizing ? 'text-green-700' : isMinting ? 'text-violet-700' : 'text-gray-600'
+                        }`}>
+                          {isAuthConfirmed || isAuthorizing ? 'INFT Minted ✓' : isMinting ? 'Minting INFT...' : 'Mint INFT Token'}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {isMinting ? 'Approve the transaction in your wallet' : 'Creating your Intelligent NFT'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {/* Step 2: Authorizing */}
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
+                        isAuthConfirmed 
+                          ? 'bg-green-500' 
+                          : isAuthorizing 
+                          ? 'bg-violet-500' 
+                          : 'bg-gray-300'
+                      }`}>
+                        {isAuthConfirmed ? (
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : isAuthorizing ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        ) : (
+                          <span className="text-white text-xs font-bold">2</span>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm font-semibold ${
+                          isAuthConfirmed ? 'text-green-700' : isAuthorizing ? 'text-violet-700' : 'text-gray-600'
+                        }`}>
+                          {isAuthConfirmed ? 'Authorized ✓' : isAuthorizing ? 'Authorizing...' : 'Auto-Authorization'}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-0.5">
+                          {isAuthorizing ? 'Granting access permissions...' : 'Backend will authorize automatically'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Section - Show only when not processing */}
+                {!isMinting && !isAuthorizing && !isAuthConfirmed && (
+                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs font-semibold text-gray-700 mb-1.5">Next Steps:</p>
+                    <ol className="text-xs text-gray-600 space-y-0.5 ml-4 list-decimal">
+                      <li>Click "Claim My INFT" to mint your token</li>
+                      <li>Approve the transaction in your wallet</li>
+                      <li>You'll be automatically authorized</li>
+                      <li>Start using AI inference in Chat!</li>
+                    </ol>
+                  </div>
+                )}
 
                 {/* Buttons */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setShowClaimINFTModal(false);
-                      setRegisteredModelName('');
-                    }}
-                    disabled={isMinting || isAuthorizing}
-                    className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 font-medium text-sm"
-                  >
-                    Claim Later
-                  </button>
-                  <button
-                    onClick={handleClaimINFT}
-                    disabled={isMinting || isAuthorizing}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 font-medium flex items-center justify-center gap-2 text-sm"
-                  >
-                    {isMinting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Minting...
-                      </>
-                    ) : isAuthorizing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Authorizing...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Claim My INFT
-                      </>
-                    )}
-                  </button>
-                </div>
+                {!isAuthConfirmed && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setShowClaimINFTModal(false);
+                        setRegisteredModelName('');
+                        setIsAuthConfirmed(false);
+                        setAuthError(null);
+                      }}
+                      disabled={isMinting || isAuthorizing}
+                      className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                    >
+                      Claim Later
+                    </button>
+                    <button
+                      onClick={handleClaimINFT}
+                      disabled={isMinting || isAuthorizing}
+                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
+                    >
+                      {isMinting ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Minting...
+                        </>
+                      ) : isAuthorizing ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Authorizing...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Claim My INFT
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 {/* Success state after authorization */}
                 {isAuthConfirmed && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 bg-green-50 border-2 border-green-300 rounded-lg"
+                    >
+                      <div className="flex items-center gap-2 text-green-800 mb-2">
+                        <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="font-bold text-base">All Done! 🎉</span>
+                      </div>
+                      <p className="text-sm text-green-700 mb-3">
+                        Your INFT has been claimed and authorized successfully! You can now use AI inference in the Chat.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setShowClaimINFTModal(false);
+                          setRegisteredModelName('');
+                          setIsSecondHost(false);
+                          setIsAuthConfirmed(false);
+                          setAuthError(null);
+                        }}
+                        className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Close & Continue
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+
+                {/* Error state if authorization fails */}
+                {authError && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg"
+                    className="p-4 bg-red-50 border-2 border-red-300 rounded-lg"
                   >
-                    <div className="flex items-center gap-2 text-green-800">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <div className="flex items-start gap-2 text-red-800 mb-3">
+                      <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="font-semibold text-sm">INFT Claimed Successfully!</span>
+                      <div className="flex-1">
+                        <span className="font-semibold text-sm">Authorization Failed</span>
+                        <p className="text-xs text-red-700 mt-1">
+                          {authError}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-xs text-green-700 mt-1">
-                      You can now use AI inference in Chat. Closing...
-                    </p>
+                    <button
+                      onClick={() => {
+                        setShowClaimINFTModal(false);
+                        setRegisteredModelName('');
+                        setIsSecondHost(false);
+                        setIsAuthConfirmed(false);
+                        setAuthError(null);
+                      }}
+                      className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Close
+                    </button>
                   </motion.div>
                 )}
               </div>
