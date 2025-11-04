@@ -56,13 +56,6 @@ export const INFT_ABI = [
     "type": "function"
   },
   {
-    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
-    "name": "tokenMinter",
-    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
     "name": "balanceOf",
     "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
@@ -261,15 +254,19 @@ export function useBurnINFT() {
 
 /**
  * Custom hook to check if a user is authorized for an INFT
- * Also verifies the INFT was issued by an allowed issuer
+ * 
+ * IMPORTANT: This hook only checks INFTs from the specific contract address 
+ * defined in networkConfig.ts (CONTRACT_ADDRESSES.INFT).
+ * Generic INFTs from other contracts are automatically excluded since we're 
+ * querying a specific contract address.
  */
 export function useCheckINFTAuthorization(
   tokenId: number = 1, 
-  userAddress?: string,
-  allowedIssuer?: string // Optional: if provided, only INFTs from this issuer are valid
+  userAddress?: string
 ) {
-  // Check if user is authorized for the INFT
-  const { data: isAuthorized, refetch: refetchAuth } = useReadContract({
+  // Check if user is authorized for the INFT from our specific contract
+  // Only INFTs minted from CONTRACT_ADDRESSES.INFT are valid
+  const { data: isAuthorized, refetch } = useReadContract({
     address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
     abi: INFT_ABI,
     functionName: 'isAuthorized',
@@ -279,30 +276,10 @@ export function useCheckINFTAuthorization(
     },
   })
 
-  // Check who minted the INFT
-  const { data: minter, refetch: refetchMinter } = useReadContract({
-    address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
-    abi: INFT_ABI,
-    functionName: 'tokenMinter',
-    args: [BigInt(tokenId)],
-    query: {
-      enabled: !!allowedIssuer, // Only check minter if we care about the issuer
-    },
-  })
-
-  // User is authorized if:
-  // 1. They have authorization for the token, AND
-  // 2. If allowedIssuer is specified, the token must be from that issuer
-  const isValidAuthorization = !!isAuthorized && 
-    (!allowedIssuer || (typeof minter === 'string' && minter.toLowerCase() === allowedIssuer.toLowerCase()))
-
   return {
-    isAuthorized: isValidAuthorization,
-    minter: minter as string | undefined,
-    refetch: () => {
-      refetchAuth()
-      if (allowedIssuer) refetchMinter()
-    },
+    isAuthorized: !!isAuthorized,
+    contractAddress: CONTRACT_ADDRESSES.INFT, // The specific INFT contract address being checked
+    refetch,
   }
 }
 

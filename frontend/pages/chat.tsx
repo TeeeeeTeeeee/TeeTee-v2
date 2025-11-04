@@ -79,6 +79,10 @@ const ChatPage = () => {
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<Conversation | null>(null);
+  
+  // No credits/INFT modal state
+  const [showNoCreditsModal, setShowNoCreditsModal] = useState(false);
+  const [showINFTOrCreditsModal, setShowINFTOrCreditsModal] = useState(false);
 
   // Hosted models from blockchain
   const [hostedModels, setHostedModels] = useState<HostedModel[]>([]);
@@ -103,12 +107,11 @@ const ChatPage = () => {
   const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
   
   // Check if user has INFT authorization
-  // Only recognize INFTs issued by the specified address (set in env)
-  const ALLOWED_INFT_ISSUER = process.env.NEXT_PUBLIC_INFT_ISSUER_ADDRESS; // Your wallet address that mints INFTs
-  const { isAuthorized: hasINFT, refetch: refetchINFT } = useCheckINFTAuthorization(
+  // Only INFTs from the specific contract address in networkConfig.ts are recognized
+  // Generic INFTs from other contracts are automatically excluded
+  const { isAuthorized: hasINFT, contractAddress: inftContractAddress, refetch: refetchINFT } = useCheckINFTAuthorization(
     1, 
-    address,
-    ALLOWED_INFT_ISSUER // Only accept INFTs from this issuer
+    address
   );
   
   // Toggle for using INFT vs token-based inference
@@ -488,6 +491,28 @@ const ChatPage = () => {
       return;
     }
 
+    // Require wallet connection first
+    if (!isConnected) {
+      alert('Please connect your wallet to continue.');
+      return;
+    }
+    
+    // Check if user has credits or INFT before proceeding
+    const userCredits = Number(myCredits || 0);
+    const hasCredits = userCredits > 0;
+    
+    // Scenario 1: No INFT and No Credits → Must buy credits
+    if (!hasINFT && !hasCredits) {
+      setShowNoCreditsModal(true);
+      return;
+    }
+    
+    // Scenario 2: Has INFT but No Credits and INFT toggle is OFF → Offer choice
+    if (hasINFT && !hasCredits && !useINFTInference) {
+      setShowINFTOrCreditsModal(true);
+      return;
+    }
+
     // Add user message
     const userMessage: Message = {
       id: Date.now(),
@@ -498,12 +523,6 @@ const ChatPage = () => {
 
     setMessages(prev => [...prev, userMessage]);
     setMessage('');
-
-    // Require wallet connection and signature first, then call model
-    if (!isConnected) {
-      setMessages(prev => prev.concat({ id: Date.now() + 1, text: 'Please connect your wallet to continue.', isUser: false, timestamp: new Date() }));
-      return;
-    }
 
     // Only deduct tokens if user doesn't have INFT authorization OR user chose not to use INFT
     if (!hasINFT || !useINFTInference) {
@@ -816,6 +835,186 @@ const ChatPage = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* No Credits Modal - User has no INFT and no credits */}
+      {showNoCreditsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+          onClick={() => setShowNoCreditsModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4 text-white rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <h2 className="text-xl font-bold">No Credits Available</h2>
+                </div>
+                <button
+                  onClick={() => setShowNoCreditsModal(false)}
+                  className="text-white hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-700 mb-4">
+                  You need to purchase credits to use the AI chat. Buy a token bundle to get started!
+                </p>
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-700 font-medium">Token Bundle</span>
+                    <span className="text-lg font-bold text-violet-600">0.001 0G</span>
+                  </div>
+                  <p className="text-xs text-gray-600">Get tokens to start chatting with AI models</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowNoCreditsModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowNoCreditsModal(false);
+                    await handleBuyBundle();
+                  }}
+                  disabled={isBuying}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isBuying ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Buying...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Buy Credits
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+      
+      {/* INFT or Credits Modal - User has INFT but no credits, toggle is off */}
+      {showINFTOrCreditsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+          onClick={() => setShowINFTOrCreditsModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-violet-500 to-purple-500 px-6 py-4 text-white rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h2 className="text-xl font-bold">Choose Your Option</h2>
+                </div>
+                <button
+                  onClick={() => setShowINFTOrCreditsModal(false)}
+                  className="text-white hover:text-violet-100 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                You have a hosted INFT that allows free AI inference, or you can purchase credits. Choose an option:
+              </p>
+
+              <div className="space-y-3 mb-6">
+                {/* Option 1: Use INFT */}
+                <button
+                  onClick={() => {
+                    setUseINFTInference(true);
+                    setShowINFTOrCreditsModal(false);
+                  }}
+                  className="w-full p-4 border-2 border-violet-300 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 bg-violet-500 text-white rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-900 mb-1">Use Hosted INFT</h3>
+                      <p className="text-sm text-gray-600">Free AI inference with your hosted model</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Option 2: Buy Credits */}
+                <button
+                  onClick={async () => {
+                    setShowINFTOrCreditsModal(false);
+                    await handleBuyBundle();
+                  }}
+                  disabled={isBuying}
+                  className="w-full p-4 border-2 border-gray-300 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 bg-gray-500 text-white rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-900 mb-1">Buy Credits (0.001 0G)</h3>
+                      <p className="text-sm text-gray-600">Purchase tokens to use any available model</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowINFTOrCreditsModal(false)}
+                className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
       )}
 
       {/* Main Chat Area - With left sidebar offset */}

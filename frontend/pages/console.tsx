@@ -139,6 +139,9 @@ const DashboardPage = () => {
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isAuthConfirmed, setIsAuthConfirmed] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  
+  // Track if the claiming process has started (after user clicks button)
+  const [hasStartedClaiming, setHasStartedClaiming] = useState(false);
 
   // Fetch models hosted by the current user
   useEffect(() => {
@@ -335,6 +338,12 @@ const DashboardPage = () => {
     if (isConfirmed && connectedAddress && registeredModelName) {
       console.log('Model registered successfully! Showing claim INFT modal...');
       
+      // Reset claiming state
+      setHasStartedClaiming(false);
+      setIsAuthConfirmed(false);
+      setIsAuthorizing(false);
+      setAuthError(null);
+      
       // Show claim modal
       setShowClaimINFTModal(true);
       
@@ -420,6 +429,9 @@ const DashboardPage = () => {
       return;
     }
     
+    // Mark that the claiming process has started
+    setHasStartedClaiming(true);
+    
     try {
       const encryptedURI = '0g://storage/model-data-' + Date.now();
       const metadataHash = '0x' + Array(64).fill('0').join('');
@@ -431,6 +443,7 @@ const DashboardPage = () => {
       }
     } catch (error) {
       console.error('Failed to claim INFT:', error);
+      setHasStartedClaiming(false); // Reset on error
     }
   };
 
@@ -556,7 +569,14 @@ const DashboardPage = () => {
                 cardData={[
                   {
                     color: '#FFFFFF',
-                    title: myHostedModels.length.toString(),
+                    title: (() => {
+                      // Count actual shards: if user hosts both host1 and host2, count as 2
+                      return myHostedModels.reduce((total, model) => {
+                        const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+                        const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+                        return total + (isHost1 ? 1 : 0) + (isHost2 ? 1 : 0);
+                      }, 0).toString();
+                    })(),
                     description: 'Shard(s) currently active',
                     label: 'Total Shards Hosted',
                     onClick: () => setActiveTab('mymodels')
@@ -1203,13 +1223,15 @@ const DashboardPage = () => {
                     </svg>
                     <h2 className="text-xl font-bold">{isSecondHost ? 'Joined Successfully!' : 'Registration Successful!'}</h2>
                   </div>
-                  {!isMinting && !isAuthorizing && (
+                  {!hasStartedClaiming && (
                     <button
                       onClick={() => {
                         setShowClaimINFTModal(false);
                         setRegisteredModelName('');
                         setIsSecondHost(false);
+                        setHasStartedClaiming(false);
                         setIsAuthConfirmed(false);
+                        setIsAuthorizing(false);
                         setAuthError(null);
                       }}
                       className="text-white hover:text-violet-100 transition-colors"
@@ -1219,7 +1241,7 @@ const DashboardPage = () => {
                       </svg>
                     </button>
                   )}
-                  {(isMinting || isAuthorizing) && (
+                  {hasStartedClaiming && (
                     <div className="text-white opacity-50 cursor-not-allowed" title="Please wait for the process to complete">
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -1286,87 +1308,60 @@ const DashboardPage = () => {
                   </ul>
                 </div>
 
-                {/* Progress Steps - Show during minting/authorizing */}
-                {(isMinting || isAuthorizing || isAuthConfirmed) && (
-                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
-                    <p className="text-xs font-semibold text-gray-700 mb-3">Progress:</p>
-                    
-                    {/* Step 1: Minting */}
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                        isAuthConfirmed || isAuthorizing 
-                          ? 'bg-green-500' 
-                          : isMinting 
-                          ? 'bg-violet-500' 
-                          : 'bg-gray-300'
-                      }`}>
-                        {isAuthConfirmed || isAuthorizing ? (
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : isMinting ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-                        ) : (
-                          <span className="text-white text-xs font-bold">1</span>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className={`text-sm font-semibold ${
-                          isAuthConfirmed || isAuthorizing ? 'text-green-700' : isMinting ? 'text-violet-700' : 'text-gray-600'
-                        }`}>
-                          {isAuthConfirmed || isAuthorizing ? 'INFT Minted ✓' : isMinting ? 'Minting INFT...' : 'Mint INFT Token'}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {isMinting ? 'Approve the transaction in your wallet' : 'Creating your Intelligent NFT'}
-                        </p>
-                      </div>
+                {/* Progress Steps - Single unified step */}
+                <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
+                  <p className="text-xs font-semibold text-gray-700 mb-3">
+                    {!hasStartedClaiming ? 'What happens when you claim:' : 'Progress:'}
+                  </p>
+                  
+                  {/* Single Step: Complete Process */}
+                  <div className="flex items-start gap-3">
+                    <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                      isAuthConfirmed
+                        ? 'bg-green-500 border-green-500' 
+                        : hasStartedClaiming
+                        ? 'bg-violet-500 border-violet-500 animate-pulse' 
+                        : 'bg-white border-violet-300'
+                    }`}>
+                      {isAuthConfirmed ? (
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : hasStartedClaiming ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                      ) : (
+                        <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      )}
                     </div>
-                    
-                    {/* Step 2: Authorizing */}
-                    <div className="flex items-start gap-3">
-                      <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${
-                        isAuthConfirmed 
-                          ? 'bg-green-500' 
-                          : isAuthorizing 
-                          ? 'bg-violet-500' 
-                          : 'bg-gray-300'
+                    <div className="flex-1">
+                      <p className={`text-base font-semibold mb-1 ${
+                        isAuthConfirmed ? 'text-green-700' : hasStartedClaiming ? 'text-violet-700' : 'text-gray-800'
                       }`}>
+                        {isAuthConfirmed ? '✓ INFT Claimed Successfully!' : hasStartedClaiming ? 'Claiming Your INFT...' : 'Mint & Authorize INFT Token'}
+                      </p>
+                      <p className="text-xs text-gray-600 leading-relaxed">
                         {isAuthConfirmed ? (
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : isAuthorizing ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                          'Your INFT has been minted and authorized. You can now use AI inference!'
+                        ) : hasStartedClaiming ? (
+                          <>
+                            {isMinting ? '⏳ Sign the transaction in your wallet...' : 
+                             !isMintConfirmed ? '⏳ Confirming transaction on blockchain...' :
+                             isAuthorizing ? '⏳ Auto-authorizing INFT access...' :
+                             '⏳ Processing...'}
+                          </>
                         ) : (
-                          <span className="text-white text-xs font-bold">2</span>
+                          <>
+                            • Mint your Intelligent NFT token<br />
+                            • Confirm transaction on blockchain<br />
+                            • Automatically authorize access
+                          </>
                         )}
-                      </div>
-                      <div className="flex-1">
-                        <p className={`text-sm font-semibold ${
-                          isAuthConfirmed ? 'text-green-700' : isAuthorizing ? 'text-violet-700' : 'text-gray-600'
-                        }`}>
-                          {isAuthConfirmed ? 'Authorized ✓' : isAuthorizing ? 'Authorizing...' : 'Auto-Authorization'}
-                        </p>
-                        <p className="text-xs text-gray-600 mt-0.5">
-                          {isAuthorizing ? 'Granting access permissions...' : 'Backend will authorize automatically'}
-                        </p>
-                      </div>
+                      </p>
                     </div>
                   </div>
-                )}
-
-                {/* Action Section - Show only when not processing */}
-                {!isMinting && !isAuthorizing && !isAuthConfirmed && (
-                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-3 mb-4">
-                    <p className="text-xs font-semibold text-gray-700 mb-1.5">Next Steps:</p>
-                    <ol className="text-xs text-gray-600 space-y-0.5 ml-4 list-decimal">
-                      <li>Click "Claim My INFT" to mint your token</li>
-                      <li>Approve the transaction in your wallet</li>
-                      <li>You'll be automatically authorized</li>
-                      <li>Start using AI inference in Chat!</li>
-                    </ol>
-                  </div>
-                )}
+                </div>
 
                 {/* Buttons */}
                 {!isAuthConfirmed && (
@@ -1375,28 +1370,25 @@ const DashboardPage = () => {
                       onClick={() => {
                         setShowClaimINFTModal(false);
                         setRegisteredModelName('');
+                        setHasStartedClaiming(false);
                         setIsAuthConfirmed(false);
+                        setIsAuthorizing(false);
                         setAuthError(null);
                       }}
-                      disabled={isMinting || isAuthorizing}
+                      disabled={hasStartedClaiming}
                       className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
                     >
                       Claim Later
                     </button>
                     <button
                       onClick={handleClaimINFT}
-                      disabled={isMinting || isAuthorizing}
+                      disabled={hasStartedClaiming}
                       className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
                     >
-                      {isMinting ? (
+                      {hasStartedClaiming ? (
                         <>
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          Minting...
-                        </>
-                      ) : isAuthorizing ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          Authorizing...
+                          Processing...
                         </>
                       ) : (
                         <>
@@ -1432,7 +1424,9 @@ const DashboardPage = () => {
                           setShowClaimINFTModal(false);
                           setRegisteredModelName('');
                           setIsSecondHost(false);
+                          setHasStartedClaiming(false);
                           setIsAuthConfirmed(false);
+                          setIsAuthorizing(false);
                           setAuthError(null);
                         }}
                         className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
@@ -1469,7 +1463,9 @@ const DashboardPage = () => {
                         setShowClaimINFTModal(false);
                         setRegisteredModelName('');
                         setIsSecondHost(false);
+                        setHasStartedClaiming(false);
                         setIsAuthConfirmed(false);
+                        setIsAuthorizing(false);
                         setAuthError(null);
                       }}
                       className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"

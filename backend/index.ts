@@ -505,11 +505,13 @@ class INFTOracleService {
       const request: InferRequest = req.body;
       const requestId = req.headers['x-request-id'] as string;
       
+      console.log(`[${requestId}] Received tokenId:`, request.tokenId, `(type: ${typeof request.tokenId})`);
+      
       // Validate request
-      if (!request.tokenId || typeof request.tokenId !== 'number') {
+      if (typeof request.tokenId !== 'number' || !Number.isFinite(request.tokenId) || request.tokenId < 0) {
         res.status(400).json({ 
           success: false, 
-          error: 'Invalid tokenId. Must be a number.' 
+          error: `Invalid tokenId. Must be a number. Received: ${request.tokenId} (type: ${typeof request.tokenId})` 
         });
         return;
       }
@@ -632,8 +634,15 @@ class INFTOracleService {
       const requestId = req.headers['x-request-id'] as string;
       
       // Validate and authorize (same as regular inference)
-      if (!request.tokenId || !request.input) {
-        res.status(400).json({ error: 'Invalid request' });
+      if (typeof request.tokenId !== 'number' || !Number.isFinite(request.tokenId) || request.tokenId < 0) {
+        res.status(400).json({ 
+          error: `Invalid tokenId. Must be a number. Received: ${request.tokenId} (type: ${typeof request.tokenId})` 
+        });
+        return;
+      }
+      
+      if (!request.input || typeof request.input !== 'string') {
+        res.status(400).json({ error: 'Invalid input. Must be a non-empty string.' });
         return;
       }
 

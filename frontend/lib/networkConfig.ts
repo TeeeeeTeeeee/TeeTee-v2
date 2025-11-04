@@ -49,11 +49,14 @@ export const zgMainnet = {
 } as const satisfies Chain;
 
 // Contract Addresses by Network
+// IMPORTANT: The INFT address here defines which INFTs get free inference usage
+// Only INFTs minted from this specific contract will qualify for free INFT-based inference
+// Generic INFTs from other contracts are automatically excluded
 export const CONTRACT_ADDRESSES = {
   testnet: {
-    INFT: '0xc78307EfaE791780608c019b134F805369f4EB3F',
-    DATA_VERIFIER: '0xC4176Fc4488032f8eBF02A88B7E939f0eE1F3709',
-    ORACLE_STUB: '0x41320456128a8B2D189EBBF405c9eF125c560eD0',
+    INFT: '0x3CD38a620e26cd3f4051b1fcA1AB27945b8F23d9', // Your specific INFT contract for free usage
+    DATA_VERIFIER: '0xd6f8Bf7F7D2546404D503387b1537C77bca4E40d',
+    ORACLE_STUB: '0x6A6f2E257aCBC8c3723A4EBfF99523Cdb64373f0',
   },
   mainnet: {
     // 0G Storage Contract Addresses on Mainnet

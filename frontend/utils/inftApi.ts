@@ -49,12 +49,18 @@ export async function runInference(
     throw new Error('Input is required')
   }
 
-  // Default to tokenId 1 if not provided or invalid
+  // Convert to number and validate - tokenId 0 is valid
   let numericTokenId = Number(tokenId);
-  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId)) {
+  
+  // Only default to 1 if tokenId is actually invalid (not a number, NaN, or negative)
+  // Note: tokenId 0 is valid!
+  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId) || numericTokenId < 0) {
     console.warn('[INFT API] Invalid or missing tokenId, defaulting to 1');
     numericTokenId = 1;
   }
+  
+  // Ensure it's an integer
+  numericTokenId = Math.floor(numericTokenId);
 
   console.log(`[INFT API] Sending inference request - TokenId: ${numericTokenId} (type: ${typeof numericTokenId})`);
 
@@ -100,12 +106,20 @@ export async function runStreamingInference(
     throw new Error('Input is required')
   }
 
-  // Default to tokenId 1 if not provided or invalid
+  // Convert to number and validate - tokenId 0 is valid
   let numericTokenId = Number(tokenId);
-  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId)) {
+  
+  // Only default to 1 if tokenId is actually invalid (not a number, NaN, or negative)
+  // Note: tokenId 0 is valid!
+  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId) || numericTokenId < 0) {
     console.warn('[INFT API] Invalid or missing tokenId, defaulting to 1');
     numericTokenId = 1;
   }
+  
+  // Ensure it's an integer
+  numericTokenId = Math.floor(numericTokenId);
+
+  console.log(`[INFT API] Streaming inference request - TokenId: ${numericTokenId} (type: ${typeof numericTokenId})`);
 
   try {
     const response = await fetch(`${BACKEND_URL}/infer/stream`, {
