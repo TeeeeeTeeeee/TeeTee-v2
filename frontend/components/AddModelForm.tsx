@@ -71,7 +71,7 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
 }) => {
   const [formData, setFormData] = useState<AddModelFormData>({
     modelName: '',
-    walletAddress: '',
+    walletAddress: connectedAddress || '',
     shardSelection: '',
     shardUrl: ''
   });
@@ -87,6 +87,13 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
   const handleSubmit = async () => {
     await onSubmit(formData);
   };
+
+  // Auto-populate wallet address with connected wallet
+  React.useEffect(() => {
+    if (connectedAddress) {
+      setFormData(prev => ({ ...prev, walletAddress: connectedAddress }));
+    }
+  }, [connectedAddress]);
 
   // Auto-select available shard when joining an existing model
   React.useEffect(() => {
@@ -304,36 +311,42 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
           <div className="space-y-4">
             <div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">Your Wallet Address</h3>
-              <p className="text-base text-gray-600">Enter your wallet address to receive hosting rewards</p>
+              <p className="text-base text-gray-600">This wallet will receive hosting rewards</p>
             </div>
             
             <div>
-              <label htmlFor="walletAddress" className="block text-sm font-medium text-gray-700 mb-2">
-                Wallet Address *
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Connected Wallet Address
               </label>
-              <div className="flex gap-2">
-                <input
-                  id="walletAddress"
-                  type="text"
-                  value={formData.walletAddress}
-                  onChange={(e) => setFormData({ ...formData, walletAddress: e.target.value })}
-                  placeholder="0x1234567890abcdef..."
-                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => connectedAddress && setFormData({ ...formData, walletAddress: connectedAddress })}
-                  disabled={!connectedAddress}
-                  className="px-3 py-2 bg-violet-100 text-violet-700 rounded-lg hover:bg-violet-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap text-xs font-medium"
-                  title={connectedAddress ? 'Use connected wallet' : 'No wallet connected'}
-                >
-                  Use Connected
-                </button>
+              <div className="px-4 py-3 bg-gradient-to-r from-violet-50 to-purple-50 border-2 border-violet-200 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <svg className="w-5 h-5 text-violet-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                  <code className="text-sm font-mono text-gray-900 break-all">
+                    {formData.walletAddress || 'No wallet connected'}
+                  </code>
+                </div>
+              </div>
+            </div>
+
+            {/* Security Warning */}
+            <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-lg">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-amber-900 mb-1">Important Security Notice</h4>
+                  <p className="text-sm text-amber-800">
+                    Ensure you have access to this wallet account to claim your hosting rewards. Use a secure account that you control and can access at any time.
+                  </p>
+                </div>
               </div>
             </div>
 
             {!formData.walletAddress && (
-              <p className="text-xs text-amber-600">Please enter your wallet address to continue</p>
+              <p className="text-xs text-red-600">Please connect your wallet to continue</p>
             )}
           </div>
         </Step>
