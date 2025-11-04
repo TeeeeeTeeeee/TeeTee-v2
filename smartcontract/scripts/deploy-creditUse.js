@@ -6,19 +6,19 @@ async function main() {
   console.log("🚀 Deploying with:", await deployer.getAddress());
 
   // Compile and get contract factory
-  const CreditUseWithChat = await ethers.getContractFactory("CreditUse", deployer);
+  const CreditUse = await ethers.getContractFactory("CreditUse", deployer);
 
   // Deploy contract
-  console.log("📦 Deploying CreditUseWithChat...");
-  const creditUseWithChat = await CreditUseWithChat.deploy();
-  await creditUseWithChat.waitForDeployment();
-  const address = await creditUseWithChat.getAddress();
+  console.log("📦 Deploying CreditUse...");
+  const creditUse = await CreditUse.deploy();
+  await creditUse.waitForDeployment();
+  const address = await creditUse.getAddress();
   console.log("✅ Deployed at:", address);
 
   // Log basic info
-  const amount = await creditUseWithChat.BUNDLE_AMOUNT();
-  const price = await creditUseWithChat.BUNDLE_PRICE();
-  const owner = await creditUseWithChat.owner();
+  const amount = await creditUse.BUNDLE_AMOUNT();
+  const price = await creditUse.BUNDLE_PRICE();
+  const owner = await creditUse.owner();
   console.log("   - Bundle amount:", amount.toString());
   console.log("   - Bundle price:", ethers.formatEther(price), "0G");
   console.log("   - Contract owner:", owner);

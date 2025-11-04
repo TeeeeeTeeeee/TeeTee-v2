@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract CreditUseWithChat {
+contract CreditUse {
     uint256 public constant BUNDLE_AMOUNT = 200;
     uint256 public constant BUNDLE_PRICE = 0.001 ether; // 0.001 0G for 200 credits
     uint256 public constant CREDIT_PRICE_WEI = BUNDLE_PRICE / BUNDLE_AMOUNT;
@@ -10,20 +10,6 @@ contract CreditUseWithChat {
 
     mapping(address => uint256) public userCredits;
     uint256 public generalPool; // Pool of funds before being allocated to specific LLMs
-
-    // Chat message storage
-    struct ChatMessage {
-        string encryptedContent; // Encrypted message content
-        uint256 timestamp;
-        bool isUser; // true = user message, false = AI response
-    }
-
-    // Map user address to their chat sessions
-    // address => sessionId => messages
-    mapping(address => mapping(uint256 => ChatMessage[])) private userChatSessions;
-    
-    // Track number of sessions per user
-    mapping(address => uint256) public userSessionCount;
 
     struct HostedLLMEntry {
         address host1;
@@ -372,55 +358,5 @@ contract CreditUseWithChat {
     // Get total count of hosted LLMs
     function getTotalLLMs() external view returns (uint256) {
         return hostedLLMs.length;
-    }
-
-    // ========== CHAT MESSAGE FUNCTIONS ==========
-    
-    // Create a new chat session and return the session ID
-    function createChatSession() external returns (uint256) {
-        uint256 sessionId = userSessionCount[msg.sender];
-        userSessionCount[msg.sender]++;
-        return sessionId;
-    }
-    
-    // Store a message exchange (user message + AI response) - encrypted
-    function storeMessageExchange(
-        uint256 sessionId,
-        string calldata encryptedUserMessage,
-        string calldata encryptedAIResponse
-    ) external {
-        require(sessionId < userSessionCount[msg.sender], "Invalid session ID");
-        
-        // Store user message
-        userChatSessions[msg.sender][sessionId].push(ChatMessage({
-            encryptedContent: encryptedUserMessage,
-            timestamp: block.timestamp,
-            isUser: true
-        }));
-        
-        // Store AI response
-        userChatSessions[msg.sender][sessionId].push(ChatMessage({
-            encryptedContent: encryptedAIResponse,
-            timestamp: block.timestamp,
-            isUser: false
-        }));
-    }
-    
-    // Get all messages from a session
-    function getSessionMessages(uint256 sessionId) external view returns (ChatMessage[] memory) {
-        require(sessionId < userSessionCount[msg.sender], "Invalid session ID");
-        return userChatSessions[msg.sender][sessionId];
-    }
-    
-    // Get message count for a session
-    function getSessionMessageCount(uint256 sessionId) external view returns (uint256) {
-        require(sessionId < userSessionCount[msg.sender], "Invalid session ID");
-        return userChatSessions[msg.sender][sessionId].length;
-    }
-    
-    // Delete a chat session
-    function deleteChatSession(uint256 sessionId) external {
-        require(sessionId < userSessionCount[msg.sender], "Invalid session ID");
-        delete userChatSessions[msg.sender][sessionId];
     }
 }
