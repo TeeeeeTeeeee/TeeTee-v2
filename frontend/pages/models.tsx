@@ -14,6 +14,7 @@ import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
 import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
+import { ModelFilters } from '../components/ModelFilters';
 
 interface AddModelFormData {
   modelName: string;
@@ -405,7 +406,8 @@ const ModelsPage = () => {
                 </div>
 
                 {/* Filter Buttons */}
-                <div className="flex items-center flex-1 gap-6">
+                <div className="flex items-center flex-1 gap-6 justify-between">
+                  <div className="flex items-center gap-6">
                   <button
                     onClick={() => setFilterStatus('all')}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 transform ${
@@ -470,6 +472,10 @@ const ModelsPage = () => {
                       </button>
                     </>
                   )}
+                  </div>
+                  
+                  {/* Filter Icon */}
+                  <ModelFilters />
                 </div>
               </div>
             </div>
