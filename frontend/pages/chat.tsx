@@ -52,6 +52,12 @@ interface HostedModel {
   isComplete: boolean;
 }
 
+// Group models by name for random selection
+interface ModelGroup {
+  modelName: string;
+  modelIds: number[]; // All IDs that host this model
+}
+
 const ChatPage = () => {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
@@ -77,6 +83,9 @@ const ChatPage = () => {
   // Hosted models from blockchain
   const [hostedModels, setHostedModels] = useState<HostedModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  
+  // Model groups for handling duplicates
+  const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
 
   const { address, isConnected } = useAccount();
   const config = useConfig();
@@ -134,6 +143,7 @@ const ChatPage = () => {
     const fetchHostedModels = async () => {
       if (totalLLMs === undefined) {
         setHostedModels([]);
+        setModelGroups([]);
         return;
       }
 
@@ -175,23 +185,51 @@ const ChatPage = () => {
           }
         }
         
-        // Deduplicate models by name - keep the first occurrence
-        const uniqueModels: HostedModel[] = [];
-        const seenNames = new Set<string>();
-        
+        // Group models by name to track all IDs for each model name
+        const modelMap = new Map<string, number[]>();
         for (const model of models) {
-          if (!seenNames.has(model.modelName)) {
-            seenNames.add(model.modelName);
-            uniqueModels.push(model);
+          if (!modelMap.has(model.modelName)) {
+            modelMap.set(model.modelName, []);
+          }
+          modelMap.get(model.modelName)!.push(model.id);
+        }
+        
+        // Create model groups
+        const groups: ModelGroup[] = Array.from(modelMap.entries()).map(([modelName, modelIds]) => ({
+          modelName,
+          modelIds
+        }));
+        
+        setModelGroups(groups);
+        setHostedModels(models);
+        
+        // Check if modelId is provided in URL query params
+        const urlModelIdParam = router.query.modelId;
+        if (urlModelIdParam) {
+          const urlModelId = parseInt(Array.isArray(urlModelIdParam) ? urlModelIdParam[0] : urlModelIdParam, 10);
+          
+          if (!isNaN(urlModelId) && Number.isFinite(urlModelId)) {
+            // Find the model with this ID
+            const selectedModelFromUrl = models.find(m => m.id === urlModelId);
+            if (selectedModelFromUrl) {
+              setSelectedModel(selectedModelFromUrl.modelName);
+              setSelectedModelId(urlModelId);
+              console.log(`Selected model from URL: ${selectedModelFromUrl.modelName} (ID: ${urlModelId})`);
+              return;
+            } else {
+              console.warn(`Model with ID ${urlModelId} not found in available models`);
+            }
           }
         }
         
-        setHostedModels(uniqueModels);
-        
         // Auto-select first model if none selected
-        if (uniqueModels.length > 0 && !selectedModel) {
-          setSelectedModel(uniqueModels[0].modelName);
-          setSelectedModelId(uniqueModels[0].id);
+        if (groups.length > 0 && !selectedModel) {
+          const firstGroup = groups[0];
+          setSelectedModel(firstGroup.modelName);
+          // Randomly select one ID from the group
+          const randomId = firstGroup.modelIds[Math.floor(Math.random() * firstGroup.modelIds.length)];
+          setSelectedModelId(randomId);
+          console.log(`Auto-selected: ${firstGroup.modelName} (ID: ${randomId})`);
         }
       } catch (error) {
         console.error('Error fetching hosted models:', error);
@@ -201,7 +239,7 @@ const ChatPage = () => {
     };
 
     fetchHostedModels();
-  }, [totalLLMs, config]);
+  }, [totalLLMs, config, router.query.modelId]);
 
   // Prevent browser close/refresh during save
   useEffect(() => {
@@ -502,10 +540,21 @@ const ChatPage = () => {
     // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      // Use token ID 1 by default for testing (can be changed to selectedModelId later)
-      const tokenId = 1;
+      // Use selected model ID, fallback to 1 if not set
+      // For hosted INFT: tokenId represents the blockchain model ID to use
+      let tokenId = 1; // Default fallback
+      if (selectedModelId !== null && selectedModelId !== undefined) {
+        tokenId = Number(selectedModelId); // Ensure it's a number
+      }
       
-      // Use INFT inference with token ID 1
+      console.log(`Running inference with model ID: ${tokenId} (type: ${typeof tokenId}) (useINFT: ${useINFTInference}, hasINFT: ${hasINFT})`);
+      
+      // Validate tokenId is a valid number
+      if (isNaN(tokenId) || !Number.isFinite(tokenId)) {
+        throw new Error('Invalid model ID selected. Please select a valid model.');
+      }
+      
+      // Use INFT inference with selected model ID
       const inferenceResult = await runINFTInference(tokenId, message, address);
       
       const text = inferenceResult?.output || 'No response from INFT';
@@ -578,23 +627,31 @@ const ChatPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {showModelDropdown && hostedModels.length > 0 && (
+            {showModelDropdown && modelGroups.length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
-                {hostedModels.map((model) => (
+                {modelGroups.map((group, index) => (
                   <button
-                    key={model.id}
+                    key={index}
                     onClick={() => {
-                      setSelectedModel(model.modelName);
-                      setSelectedModelId(model.id);
+                      setSelectedModel(group.modelName);
+                      // Randomly select one ID from the available IDs for this model
+                      const randomId = group.modelIds[Math.floor(Math.random() * group.modelIds.length)];
+                      setSelectedModelId(randomId);
                       setShowModelDropdown(false);
+                      console.log(`Selected ${group.modelName} (ID: ${randomId} from ${group.modelIds.length} available)`);
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                      selectedModelId === model.id
+                      selectedModel === group.modelName
                         ? 'bg-violet-50 text-violet-900'
                         : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    {model.modelName}
+                    <div className="flex items-center justify-between">
+                      <span>{group.modelName}</span>
+                      {group.modelIds.length > 1 && (
+                        <span className="text-xs text-gray-500 ml-2">({group.modelIds.length} hosts)</span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>

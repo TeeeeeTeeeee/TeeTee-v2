@@ -45,16 +45,25 @@ export async function runInference(
   input: string,
   userAddress?: string
 ): Promise<InferenceResponse> {
-  if (!tokenId || !input) {
-    throw new Error('Token ID and input are required')
+  if (!input) {
+    throw new Error('Input is required')
   }
+
+  // Default to tokenId 1 if not provided or invalid
+  let numericTokenId = Number(tokenId);
+  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId)) {
+    console.warn('[INFT API] Invalid or missing tokenId, defaulting to 1');
+    numericTokenId = 1;
+  }
+
+  console.log(`[INFT API] Sending inference request - TokenId: ${numericTokenId} (type: ${typeof numericTokenId})`);
 
   try {
     const response = await fetch(`${BACKEND_URL}/infer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        tokenId,
+        tokenId: numericTokenId,
         input,
         user: userAddress,
       }),
@@ -87,8 +96,15 @@ export async function runStreamingInference(
   userAddress: string | undefined,
   callbacks: StreamingCallback
 ): Promise<void> {
-  if (!tokenId || !input) {
-    throw new Error('Token ID and input are required')
+  if (!input) {
+    throw new Error('Input is required')
+  }
+
+  // Default to tokenId 1 if not provided or invalid
+  let numericTokenId = Number(tokenId);
+  if (tokenId === null || tokenId === undefined || isNaN(numericTokenId) || !Number.isFinite(numericTokenId)) {
+    console.warn('[INFT API] Invalid or missing tokenId, defaulting to 1');
+    numericTokenId = 1;
   }
 
   try {
@@ -99,7 +115,7 @@ export async function runStreamingInference(
         'Accept': 'text/event-stream',
       },
       body: JSON.stringify({
-        tokenId,
+        tokenId: numericTokenId,
         input,
         user: userAddress,
       }),

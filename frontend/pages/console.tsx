@@ -720,7 +720,7 @@ const DashboardPage = () => {
 
                       {isComplete ? (
                         <button
-                          onClick={() => router.push('/chat')}
+                          onClick={() => router.push(`/chat?modelId=${model.id}`)}
                           className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
