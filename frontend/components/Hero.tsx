@@ -13,7 +13,7 @@ export const Hero = () => {
   }, []);
   
   return (
-    <section className="relative h-screen bg-transparent">
+    <section className="relative h-screen bg-transparent z-0">
       {/* Content container - Grid layout with text on left, Spline on right */}
       <div className="pt-32 pb-16 flex items-center relative z-10 h-full">
         <div className="max-w-7xl mx-auto px-6 w-full">
@@ -22,22 +22,19 @@ export const Hero = () => {
             <div className="flex flex-col text-left pointer-events-none">
               {/* Main Title */}
               <div className="mb-6">
-                <h1 className="text-[120px] font-bold leading-none mb-6" style={{
-                  background: 'linear-gradient(to right, #a78bfa, #d8b4fe)',
-                  WebkitBackgroundClip: 'text',
-                  backgroundClip: 'text',
-                  color: 'transparent'
-                }}>
-                  TeeTee
+                <h1 className="text-[120px] font-bold leading-none mb-6" style={{ fontFamily: 'var(--font-pacifico)' }}>
+                  <span className="bg-gradient-to-r from-violet-400 to-purple-300 text-transparent bg-clip-text">
+                    TeeTee
+                  </span>
                 </h1>
-                <h2 className="text-[32px] font-medium text-gray-700 mb-4">
-                  AI inference, reimagined for trust, scale, and resilience.
+                <h2 className="text-[28px] font-medium text-gray-700 mb-4 leading-snug">
+                LLM Sharding Across Multiple Verifiable TEE with Decentralized Inference
                 </h2>
               </div>
 
               {/* Description */}
-              <p className="text-lg text-gray-600 mb-8 max-w-xl">
-                By sharding models across a decentralized TEE network, TeeTee removes the limits of cost, privacy, and scale.
+              <p className="text-[17px] text-gray-600 mb-8 max-w-xl leading-relaxed">
+                By sharding models across a decentralized TEE network, TeeTee removes the limits of cost, privacy, and scale. Any company can host their own powerful LLM with full data privacy at half the cost or lesser.
               </p>
 
               {/* Call to Action Buttons - Using pointer-events-auto to ensure buttons are clickable */}

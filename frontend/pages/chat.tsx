@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
+import { readContract } from '@wagmi/core';
 import { encode, isWithinTokenLimit } from 'gpt-tokenizer';
 import { MessageSquare } from 'lucide-react';
 import {
@@ -15,9 +16,12 @@ import {
   useBuyCredits,
   useUsePrompt,
 } from '@/lib/contracts/creditUse';
+import { useGetTotalLLMs } from '@/lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useInference } from '../hooks/useInference';
 import { useCheckINFTAuthorization } from '../hooks/useINFT';
 import { Navbar } from '@/components/Navbar';
+import ABI from '../utils/abi.json';
+import { CONTRACT_ADDRESS } from '../utils/address';
 
 interface Conversation {
   _id: string;
@@ -38,10 +42,27 @@ interface Message {
   timestamp: Date;
 }
 
+interface HostedModel {
+  id: number;
+  modelName: string;
+  host1: string;
+  host2: string;
+  shardUrl1: string;
+  shardUrl2: string;
+  isComplete: boolean;
+}
+
+// Group models by name for random selection
+interface ModelGroup {
+  modelName: string;
+  modelIds: number[]; // All IDs that host this model
+}
+
 const ChatPage = () => {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(true);
-  const [selectedModel, setSelectedModel] = useState('gpt-4o-mini');
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -58,8 +79,23 @@ const ChatPage = () => {
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<Conversation | null>(null);
+  
+  // No credits/INFT modal state
+  const [showNoCreditsModal, setShowNoCreditsModal] = useState(false);
+  const [showINFTOrCreditsModal, setShowINFTOrCreditsModal] = useState(false);
+
+  // Hosted models from blockchain
+  const [hostedModels, setHostedModels] = useState<HostedModel[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  
+  // Model groups for handling duplicates
+  const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
 
   const { address, isConnected } = useAccount();
+  const config = useConfig();
+  
+  // Get total LLMs from contract
+  const { totalLLMs } = useGetTotalLLMs();
 
   // Contract: credits and buy
   const { data: myCredits, refetch: refetchMyCredits } = useCheckUserCredits(address);
@@ -71,7 +107,12 @@ const ChatPage = () => {
   const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
   
   // Check if user has INFT authorization
-  const { isAuthorized: hasINFT, refetch: refetchINFT } = useCheckINFTAuthorization(1, address);
+  // Only INFTs from the specific contract address in networkConfig.ts are recognized
+  // Generic INFTs from other contracts are automatically excluded
+  const { isAuthorized: hasINFT, contractAddress: inftContractAddress, refetch: refetchINFT } = useCheckINFTAuthorization(
+    1, 
+    address
+  );
   
   // Toggle for using INFT vs token-based inference
   const [useINFTInference, setUseINFTInference] = useState(true);
@@ -99,6 +140,109 @@ const ChatPage = () => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Fetch all complete hosted models from blockchain
+  useEffect(() => {
+    const fetchHostedModels = async () => {
+      if (totalLLMs === undefined) {
+        setHostedModels([]);
+        setModelGroups([]);
+        return;
+      }
+
+      setIsLoadingModels(true);
+      
+      try {
+        const models: HostedModel[] = [];
+        
+        // Fetch all LLMs and filter for complete ones
+        for (let i = 0; i < Number(totalLLMs); i++) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [BigInt(i)]
+            }) as any;
+            
+            if (data) {
+              const host1 = data.host1 || data[0] || '';
+              const host2 = data.host2 || data[1] || '';
+              const isComplete = data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false);
+              
+              // Only add complete models to the list
+              if (isComplete || (host1 !== '0x0000000000000000000000000000000000000000' && host2 !== '0x0000000000000000000000000000000000000000')) {
+                models.push({
+                  id: i,
+                  modelName: data.modelName || data[4] || 'Unknown Model',
+                  host1,
+                  host2,
+                  shardUrl1: data.shardUrl1 || data[2] || '',
+                  shardUrl2: data.shardUrl2 || data[3] || '',
+                  isComplete: true
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${i}:`, error);
+          }
+        }
+        
+        // Group models by name to track all IDs for each model name
+        const modelMap = new Map<string, number[]>();
+        for (const model of models) {
+          if (!modelMap.has(model.modelName)) {
+            modelMap.set(model.modelName, []);
+          }
+          modelMap.get(model.modelName)!.push(model.id);
+        }
+        
+        // Create model groups
+        const groups: ModelGroup[] = Array.from(modelMap.entries()).map(([modelName, modelIds]) => ({
+          modelName,
+          modelIds
+        }));
+        
+        setModelGroups(groups);
+        setHostedModels(models);
+        
+        // Check if modelId is provided in URL query params
+        const urlModelIdParam = router.query.modelId;
+        if (urlModelIdParam) {
+          const urlModelId = parseInt(Array.isArray(urlModelIdParam) ? urlModelIdParam[0] : urlModelIdParam, 10);
+          
+          if (!isNaN(urlModelId) && Number.isFinite(urlModelId)) {
+            // Find the model with this ID
+            const selectedModelFromUrl = models.find(m => m.id === urlModelId);
+            if (selectedModelFromUrl) {
+              setSelectedModel(selectedModelFromUrl.modelName);
+              setSelectedModelId(urlModelId);
+              console.log(`Selected model from URL: ${selectedModelFromUrl.modelName} (ID: ${urlModelId})`);
+              return;
+            } else {
+              console.warn(`Model with ID ${urlModelId} not found in available models`);
+            }
+          }
+        }
+        
+        // Auto-select first model if none selected
+        if (groups.length > 0 && !selectedModel) {
+          const firstGroup = groups[0];
+          setSelectedModel(firstGroup.modelName);
+          // Randomly select one ID from the group
+          const randomId = firstGroup.modelIds[Math.floor(Math.random() * firstGroup.modelIds.length)];
+          setSelectedModelId(randomId);
+          console.log(`Auto-selected: ${firstGroup.modelName} (ID: ${randomId})`);
+        }
+      } catch (error) {
+        console.error('Error fetching hosted models:', error);
+      } finally {
+        setIsLoadingModels(false);
+      }
+    };
+
+    fetchHostedModels();
+  }, [totalLLMs, config, router.query.modelId]);
 
   // Prevent browser close/refresh during save
   useEffect(() => {
@@ -135,12 +279,6 @@ const ChatPage = () => {
     };
   }, [isSavingToStorage, router]);
 
-  const models = [
-    'gpt-4o-mini',
-    'gpt-4o',
-    'gpt-4.1-mini',
-  ];
-
   // Chat sessions from local JSON storage
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -176,8 +314,7 @@ const ChatPage = () => {
     }
   }, [isConnected, address]);
 
-  // Auto-save to 0G storage after each message exchange
-  // This uploads the ENTIRE conversation to 0G and updates JSON with new root hash
+  // Auto-save to local JSON and MongoDB after each message exchange
   const autoSaveToStorage = async (messagesToSave: Message[]) => {
     if (!isConnected || !address || messagesToSave.length === 0) return;
     
@@ -190,9 +327,7 @@ const ChatPage = () => {
         timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : new Date(m.timestamp).getTime(),
       }));
 
-      // Upload entire conversation to 0G Storage
-      // If sessionId exists, this will UPDATE the JSON entry with new root hash
-      // If sessionId is null, this will CREATE a new JSON entry
+      // Save to local JSON and MongoDB through the API
       const res = await fetch('/api/chat-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,14 +335,13 @@ const ChatPage = () => {
           messages: payloadMessages, 
           filename: chatFilename,
           walletAddress: address,
-          sessionId: activeConversation, // Pass session ID to update existing entry
+          sessionId: activeConversation,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to save chat session');
       
-      // Update active conversation ID if this is a new chat
       if (!activeConversation && data.sessionId) {
         setActiveConversation(data.sessionId);
         console.log('New chat session created:', data.sessionId);
@@ -215,11 +349,10 @@ const ChatPage = () => {
         console.log('Updated existing session:', activeConversation, 'with new root hash:', data.rootHash);
       }
       
-      // Refresh the session list to show updated entry in sidebar
       await fetchChatSessions();
+      
     } catch (err: any) {
       console.error('Auto-save error:', err);
-      // Silently fail - don't interrupt user's chat experience
     } finally {
       setIsSavingToStorage(false);
     }
@@ -358,6 +491,28 @@ const ChatPage = () => {
       return;
     }
 
+    // Require wallet connection first
+    if (!isConnected) {
+      alert('Please connect your wallet to continue.');
+      return;
+    }
+    
+    // Check if user has credits or INFT before proceeding
+    const userCredits = Number(myCredits || 0);
+    const hasCredits = userCredits > 0;
+    
+    // Scenario 1: No INFT and No Credits → Must buy credits
+    if (!hasINFT && !hasCredits) {
+      setShowNoCreditsModal(true);
+      return;
+    }
+    
+    // Scenario 2: Has INFT but No Credits and INFT toggle is OFF → Offer choice
+    if (hasINFT && !hasCredits && !useINFTInference) {
+      setShowINFTOrCreditsModal(true);
+      return;
+    }
+
     // Add user message
     const userMessage: Message = {
       id: Date.now(),
@@ -369,12 +524,6 @@ const ChatPage = () => {
     setMessages(prev => [...prev, userMessage]);
     setMessage('');
 
-    // Require wallet connection and signature first, then call model
-    if (!isConnected) {
-      setMessages(prev => prev.concat({ id: Date.now() + 1, text: 'Please connect your wallet to continue.', isUser: false, timestamp: new Date() }));
-      return;
-    }
-
     // Only deduct tokens if user doesn't have INFT authorization OR user chose not to use INFT
     if (!hasINFT || !useINFTInference) {
       try {
@@ -383,7 +532,14 @@ const ChatPage = () => {
         // Compute token usage for this user message (OpenAI-style tokenizer)
         const tokenIds = encode(message);
         const tokensUsed = BigInt(tokenIds.length);
-        await usePrompt(0n, tokensUsed);
+        
+        // Use selected model ID for credit deduction, fallback to 1
+        const llmIdForCredits = selectedModelId !== null && selectedModelId !== undefined 
+          ? BigInt(selectedModelId) 
+          : 1n;
+        
+        console.log(`Deducting ${tokensUsed} tokens for LLM ID: ${llmIdForCredits} (selected: ${selectedModelId})`);
+        await usePrompt(llmIdForCredits, tokensUsed);
         // Wait until the transaction is actually confirmed on-chain before proceeding
         const waitForConfirmation = async (timeoutMs = 120000) => {
           const start = Date.now();
@@ -410,10 +566,21 @@ const ChatPage = () => {
     // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      // Use INFT inference instead of OpenAI
-      // Token ID 1 is assumed - in production, track the user's INFT token
-      const tokenId = 1;
+      // Use selected model ID, fallback to 1 if not set
+      // For hosted INFT: tokenId represents the blockchain model ID to use
+      let tokenId = 1; // Default fallback
+      if (selectedModelId !== null && selectedModelId !== undefined) {
+        tokenId = Number(selectedModelId); // Ensure it's a number
+      }
       
+      console.log(`Running inference with model ID: ${tokenId} (type: ${typeof tokenId}) (useINFT: ${useINFTInference}, hasINFT: ${hasINFT})`);
+      
+      // Validate tokenId is a valid number
+      if (isNaN(tokenId) || !Number.isFinite(tokenId)) {
+        throw new Error('Invalid model ID selected. Please select a valid model.');
+      }
+      
+      // Use INFT inference with selected model ID
       const inferenceResult = await runINFTInference(tokenId, message, address);
       
       const text = inferenceResult?.output || 'No response from INFT';
@@ -464,31 +631,73 @@ const ChatPage = () => {
           <div className="relative">
             <button
               onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              disabled={isLoadingModels || hostedModels.length === 0}
+              className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>{selectedModel}</span>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-2 min-w-0">
+                {isLoadingModels ? (
+                  <>
+                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Loading models...</span>
+                  </>
+                ) : hostedModels.length === 0 ? (
+                  <span className="text-gray-500">No models available</span>
+                ) : (
+                  <span className="truncate">{selectedModel || 'Select a model'}</span>
+                )}
+              </div>
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            {showModelDropdown && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
-                {models.map((model) => (
+            {showModelDropdown && modelGroups.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-xl z-50 max-h-64 overflow-y-auto">
+                {modelGroups.map((group, index) => (
                   <button
-                    key={model}
+                    key={index}
                     onClick={() => {
-                      setSelectedModel(model);
+                      setSelectedModel(group.modelName);
+                      // Randomly select one ID from the available IDs for this model
+                      const randomId = group.modelIds[Math.floor(Math.random() * group.modelIds.length)];
+                      setSelectedModelId(randomId);
                       setShowModelDropdown(false);
+                      console.log(`Selected ${group.modelName} (ID: ${randomId} from ${group.modelIds.length} available)`);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg transition-colors"
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                      selectedModel === group.modelName
+                        ? 'bg-violet-50 text-violet-900'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
-                    {model}
+                    <div className="flex items-center justify-between">
+                      <span>{group.modelName}</span>
+                      {group.modelIds.length > 1 && (
+                        <span className="text-xs text-gray-500 ml-2">({group.modelIds.length} hosts)</span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
             )}
           </div>
           
+          {/* No Models Available Message */}
+          {!isLoadingModels && hostedModels.length === 0 && (
+            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <p className="text-xs text-yellow-800 font-medium mb-1">No models available</p>
+              <p className="text-xs text-yellow-700 mb-2">There are no complete hosted models yet.</p>
+              <Link 
+                href="/models" 
+                className="text-xs text-violet-600 hover:text-violet-700 font-medium underline"
+              >
+                Go to Models page →
+              </Link>
+            </div>
+          )}
+
           {/* Token Display and Buy Button */}
           <div className="mt-3 space-y-2">
             <div className="flex items-center justify-between text-xs px-2">
@@ -507,18 +716,21 @@ const ChatPage = () => {
           </div>
           
           {/* INFT Toggle */}
-          <div className="mt-3 flex items-center justify-between px-2 py-2 bg-gray-50 rounded-lg">
-            <label htmlFor="inft-toggle" className="flex items-center gap-2 cursor-pointer flex-1">
+          <div className="mt-3 px-2 py-2 bg-gray-50 rounded-lg">
+            <label htmlFor="inft-toggle" className={`flex items-center gap-2 ${hasINFT ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
               <input
                 id="inft-toggle"
                 type="checkbox"
                 checked={useINFTInference}
                 onChange={(e) => setUseINFTInference(e.target.checked)}
-                className="w-4 h-4 text-violet-600 bg-white border-gray-300 rounded focus:ring-violet-500 focus:ring-2 cursor-pointer"
+                disabled={!hasINFT}
+                className={`w-4 h-4 text-violet-600 bg-white border-gray-300 rounded focus:ring-violet-500 focus:ring-2 ${hasINFT ? 'cursor-pointer' : 'cursor-not-allowed'}`}
               />
-              <span className="text-xs text-gray-700 font-medium">
+              <span className="text-xs text-gray-700 font-medium flex-1">
                 Use hosted INFT
-                <span className="block text-[10px] text-gray-500 font-normal">(no tokens)</span>
+                <span className="block text-[10px] text-gray-500 font-normal">
+                  {hasINFT ? '(No Tokens Used)' : '(You don\'t have a hosted model)'}
+                </span>
               </span>
             </label>
           </div>
@@ -624,6 +836,186 @@ const ChatPage = () => {
           </div>
         </div>
       )}
+      
+      {/* No Credits Modal - User has no INFT and no credits */}
+      {showNoCreditsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+          onClick={() => setShowNoCreditsModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 px-6 py-4 text-white rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <h2 className="text-xl font-bold">No Credits Available</h2>
+                </div>
+                <button
+                  onClick={() => setShowNoCreditsModal(false)}
+                  className="text-white hover:text-gray-200 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-700 mb-4">
+                  You need to purchase credits to use the AI chat. Buy a token bundle to get started!
+                </p>
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-700 font-medium">Token Bundle</span>
+                    <span className="text-lg font-bold text-violet-600">0.001 0G</span>
+                  </div>
+                  <p className="text-xs text-gray-600">Get tokens to start chatting with AI models</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowNoCreditsModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowNoCreditsModal(false);
+                    await handleBuyBundle();
+                  }}
+                  disabled={isBuying}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isBuying ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Buying...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                      Buy Credits
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+      
+      {/* INFT or Credits Modal - User has INFT but no credits, toggle is off */}
+      {showINFTOrCreditsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+          onClick={() => setShowINFTOrCreditsModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="bg-gradient-to-r from-violet-500 to-purple-500 px-6 py-4 text-white rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <h2 className="text-xl font-bold">Choose Your Option</h2>
+                </div>
+                <button
+                  onClick={() => setShowINFTOrCreditsModal(false)}
+                  className="text-white hover:text-violet-100 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <p className="text-gray-700 mb-6">
+                You have a hosted INFT that allows free AI inference, or you can purchase credits. Choose an option:
+              </p>
+
+              <div className="space-y-3 mb-6">
+                {/* Option 1: Use INFT */}
+                <button
+                  onClick={() => {
+                    setUseINFTInference(true);
+                    setShowINFTOrCreditsModal(false);
+                  }}
+                  className="w-full p-4 border-2 border-violet-300 bg-violet-50 hover:bg-violet-100 rounded-lg transition-colors text-left"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 bg-violet-500 text-white rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-900 mb-1">Use Hosted INFT</h3>
+                      <p className="text-sm text-gray-600">Free AI inference with your hosted model</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Option 2: Buy Credits */}
+                <button
+                  onClick={async () => {
+                    setShowINFTOrCreditsModal(false);
+                    await handleBuyBundle();
+                  }}
+                  disabled={isBuying}
+                  className="w-full p-4 border-2 border-gray-300 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 bg-gray-500 text-white rounded-full flex items-center justify-center">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-gray-900 mb-1">Buy Credits (0.001 0G)</h3>
+                      <p className="text-sm text-gray-600">Purchase tokens to use any available model</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowINFTOrCreditsModal(false)}
+                className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Main Chat Area - With left sidebar offset */}
       <main className="ml-56 w-[calc(100%-224px)] h-screen overflow-hidden flex flex-col bg-gradient-to-l from-violet-400/20 via-white to-purple-300/20 pt-20">
@@ -700,7 +1092,7 @@ const ChatPage = () => {
                   <button 
                     onClick={handleSendMessage}
                     className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-                    disabled={isUsingPrompt || isGenerating || isINFTInferring}
+                    disabled={isUsingPrompt || isGenerating || isINFTInferring || !message.trim()}
                     title={
                       isUsingPrompt ? 'Waiting for transaction…' : 
                       isINFTInferring || isGenerating ? 'INFT is processing...' : 
@@ -720,24 +1112,24 @@ const ChatPage = () => {
                   </button>
                 </div>
 
-                {/* Auto-save indicator */}
-                {isSavingToStorage && (
-                  <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
-                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Saving to 0G Storage...</span>
-                  </div>
-                )}
-                {!isSavingToStorage && messages.length > 0 && isConnected && (
-                  <div className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span>Auto-saved to 0G Storage</span>
-                  </div>
-                )}
+                 {/* Auto-save indicator */}
+                 {isSavingToStorage && (
+                   <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
+                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                     </svg>
+                     <span>Saving to 0G Storage</span>
+                   </div>
+                 )}
+                 {!isSavingToStorage && messages.length > 0 && isConnected && (
+                   <div className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">
+                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                     </svg>
+                     <span>Auto-saved to 0G Storage</span>
+                   </div>
+                 )}
               </div>
             </div>
           </div>

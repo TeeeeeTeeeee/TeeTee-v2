@@ -1,421 +1,503 @@
 [
-	{
-		"inputs": [],
-		"stateMutability": "nonpayable",
-		"type": "constructor"
-	},
-	{
-		"inputs": [],
-		"name": "BUNDLE_AMOUNT",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "BUNDLE_PRICE",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "CREDIT_PRICE_WEI",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "buyCredits",
-		"outputs": [],
-		"stateMutability": "payable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "user",
-				"type": "address"
-			}
-		],
-		"name": "checkUserCredits",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "id",
-				"type": "uint256"
-			},
-			{
-				"internalType": "address",
-				"name": "host1",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "host2",
-				"type": "address"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl1",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl2",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "modelName",
-				"type": "string"
-			}
-		],
-		"name": "editRegistedLLM",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "id",
-				"type": "uint256"
-			}
-		],
-		"name": "getHostedLLM",
-		"outputs": [
-			{
-				"components": [
-					{
-						"internalType": "address",
-						"name": "host1",
-						"type": "address"
-					},
-					{
-						"internalType": "address",
-						"name": "host2",
-						"type": "address"
-					},
-					{
-						"internalType": "string",
-						"name": "shardUrl1",
-						"type": "string"
-					},
-					{
-						"internalType": "string",
-						"name": "shardUrl2",
-						"type": "string"
-					},
-					{
-						"internalType": "string",
-						"name": "modelName",
-						"type": "string"
-					},
-					{
-						"internalType": "uint256",
-						"name": "poolBalance",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "totalTimeHost1",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "totalTimeHost2",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "downtimeHost1",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "downtimeHost2",
-						"type": "uint256"
-					},
-					{
-						"internalType": "bool",
-						"name": "isComplete",
-						"type": "bool"
-					}
-				],
-				"internalType": "struct CreditUse.HostedLLMEntry",
-				"name": "",
-				"type": "tuple"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getIncompleteLLMs",
-		"outputs": [
-			{
-				"internalType": "uint256[]",
-				"name": "",
-				"type": "uint256[]"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "getTotalLLMs",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"name": "hostedLLMs",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "host1",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "host2",
-				"type": "address"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl1",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl2",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "modelName",
-				"type": "string"
-			},
-			{
-				"internalType": "uint256",
-				"name": "poolBalance",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "totalTimeHost1",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "totalTimeHost2",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "downtimeHost1",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "downtimeHost2",
-				"type": "uint256"
-			},
-			{
-				"internalType": "bool",
-				"name": "isComplete",
-				"type": "bool"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "owner",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "llmId",
-				"type": "uint256"
-			},
-			{
-				"internalType": "address",
-				"name": "host1",
-				"type": "address"
-			},
-			{
-				"internalType": "address",
-				"name": "host2",
-				"type": "address"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl1",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "shardUrl2",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "modelName",
-				"type": "string"
-			},
-			{
-				"internalType": "uint256",
-				"name": "totalTimeHost1",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "totalTimeHost2",
-				"type": "uint256"
-			}
-		],
-		"name": "registerLLM",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "llmId",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "minutesDownHost1",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "minutesDownHost2",
-				"type": "uint256"
-			}
-		],
-		"name": "reportDowntime",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "llmId",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "tokensUsed",
-				"type": "uint256"
-			}
-		],
-		"name": "usePrompt",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"name": "userCredits",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "llmId",
-				"type": "uint256"
-			}
-		],
-		"name": "withdrawToHosts",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	}
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [],
+    "name": "BUNDLE_AMOUNT",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "BUNDLE_PRICE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "CREDIT_PRICE_WEI",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "buyCredits",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "user",
+        "type": "address"
+      }
+    ],
+    "name": "checkUserCredits",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "host",
+        "type": "address"
+      }
+    ],
+    "name": "checkWithdrawable",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "host1",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "host2",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl1",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl2",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "modelName",
+        "type": "string"
+      }
+    ],
+    "name": "editRegistedLLM",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "generalPool",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getGeneralPool",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "getHostedLLM",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "address",
+            "name": "host1",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "host2",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "shardUrl1",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "shardUrl2",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "modelName",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "poolBalance",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "registeredAtHost1",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "registeredAtHost2",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastWithdrawHost1",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lastWithdrawHost2",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "usageCount",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "isComplete",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct CreditUse.HostedLLMEntry",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "hostNumber",
+        "type": "uint8"
+      }
+    ],
+    "name": "getHostingTime",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getIncompleteLLMs",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getTotalLLMs",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "hostedLLMs",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "host1",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "host2",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl1",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl2",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "modelName",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "poolBalance",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "registeredAtHost1",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "registeredAtHost2",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "lastWithdrawHost1",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "lastWithdrawHost2",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "usageCount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "isComplete",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "host1",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "host2",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl1",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "shardUrl2",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "modelName",
+        "type": "string"
+      }
+    ],
+    "name": "registerLLM",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint8",
+        "name": "hostNumber",
+        "type": "uint8"
+      }
+    ],
+    "name": "stopLLM",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "tokensUsed",
+        "type": "uint256"
+      }
+    ],
+    "name": "usePrompt",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "name": "userCredits",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      }
+    ],
+    "name": "withdraw",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "llmId",
+        "type": "uint256"
+      }
+    ],
+    "name": "withdrawToHosts",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
 ]

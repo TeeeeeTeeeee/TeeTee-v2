@@ -38,6 +38,4 @@ coverage/
 temp/
 tmp/
 
-
-
-
+.env

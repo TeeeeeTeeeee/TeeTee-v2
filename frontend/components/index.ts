@@ -1,7 +1,8 @@
 export { Navbar } from './Navbar';
 export { Hero } from './Hero';
+export { BrandCarousel } from './BrandCarousel';
 export { HowItWorks } from './HowItWorks';
-export { Features } from './Features';
+export { AnimatedTestimonialsDemo as Features } from './Features';
 export { CallToAction } from './CallToAction';
 export { Footer } from './Footer';
 export { default as Particles } from './Particles';
@@ -12,3 +13,7 @@ export { default as Stepper, Step } from './Stepper';
 export { ModelCard } from './ModelCard';
 export { ShardCard } from './ShardCard';
 export { ConfigurationSummary } from './ConfigurationSummary';
+export { AvailableHostingSlots } from './AvailableHostingSlots';
+export { MyHostedModels } from './MyHostedModels';
+export { ModelFilters } from './ModelFilters';
+export { AddModelForm } from './AddModelForm';

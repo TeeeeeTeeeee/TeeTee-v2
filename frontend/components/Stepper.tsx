@@ -82,90 +82,113 @@ export default function Stepper({
 
   return (
     <div
-      className="flex flex-col"
+      className={`mx-auto w-full max-w-5xl rounded-3xl shadow-xl bg-white p-12 border border-gray-200 ${stepCircleContainerClassName}`}
       {...rest}
     >
-      <div
-        className={`mx-auto w-full max-w-5xl rounded-xl shadow-sm bg-white border border-gray-200 ${stepCircleContainerClassName}`}
-      >
-        <div className={`${stepContainerClassName} flex w-full items-center px-6 py-4 bg-gradient-to-r from-violet-50 to-purple-50 rounded-t-xl border-b border-gray-200`}>
-          {stepsArray.map((_, index) => {
-            const stepNumber = index + 1;
-            const isNotLastStep = index < totalSteps - 1;
-            return (
-              <React.Fragment key={stepNumber}>
-                {renderStepIndicator ? (
-                  renderStepIndicator({
-                    step: stepNumber,
-                    currentStep,
-                    onStepClick: clicked => {
-                      setDirection(clicked > currentStep ? 1 : -1);
-                      updateStep(clicked);
-                    }
-                  })
-                ) : (
-                  <StepIndicator
-                    step={stepNumber}
-                    disableStepIndicators={disableStepIndicators}
-                    currentStep={currentStep}
-                    onClickStep={clicked => {
-                      setDirection(clicked > currentStep ? 1 : -1);
-                      updateStep(clicked);
-                    }}
-                  />
-                )}
-                {isNotLastStep && <StepConnector isComplete={currentStep > stepNumber} />}
-              </React.Fragment>
-            );
-          })}
-        </div>
+      {/* Step Indicators */}
+      <div className={`${stepContainerClassName} flex w-full items-center justify-between mb-12`}>
+        {stepsArray.map((_, index) => {
+          const stepNumber = index + 1;
+          const isNotLastStep = index < totalSteps - 1;
+          return (
+            <React.Fragment key={stepNumber}>
+              {renderStepIndicator ? (
+                renderStepIndicator({
+                  step: stepNumber,
+                  currentStep,
+                  onStepClick: clicked => {
+                    setDirection(clicked > currentStep ? 1 : -1);
+                    updateStep(clicked);
+                  }
+                })
+              ) : (
+                <StepIndicator
+                  step={stepNumber}
+                  disableStepIndicators={disableStepIndicators}
+                  currentStep={currentStep}
+                  onClickStep={clicked => {
+                    setDirection(clicked > currentStep ? 1 : -1);
+                    updateStep(clicked);
+                  }}
+                />
+              )}
+              {isNotLastStep && <div className="flex-1 mx-6 h-0.5 bg-gray-300" />}
+            </React.Fragment>
+          );
+        })}
+      </div>
 
-        <StepContentWrapper
-          isCompleted={isCompleted}
-          currentStep={currentStep}
-          direction={direction}
-          className={`px-6 py-6 ${contentClassName}`}
-        >
-          {stepsArray[currentStep - 1]}
-        </StepContentWrapper>
+      {/* Content */}
+      {!isCompleted ? (
+        <>
+          <StepContentWrapper
+            isCompleted={isCompleted}
+            currentStep={currentStep}
+            direction={direction}
+            className={`mb-8 ${contentClassName}`}
+          >
+            {stepsArray[currentStep - 1]}
+          </StepContentWrapper>
 
-        {!isCompleted && (
-          <div className={`px-6 pb-6 ${footerClassName}`}>
-            <div className="mt-6 flex items-center justify-between">
-              {/* Left: Cancel button */}
-              {onCancel && (
+          {/* Footer Buttons */}
+          <div className={`flex items-center justify-between ${footerClassName}`}>
+            {/* Left: Cancel button */}
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                {...cancelButtonProps}
+              >
+                {cancelButtonText}
+              </button>
+            )}
+            
+            {/* Right: Navigation buttons */}
+            <div className="flex gap-3 ml-auto">
+              {currentStep !== 1 && (
                 <button
-                  onClick={onCancel}
-                  className="duration-350 rounded-lg px-3 py-1.5 text-sm transition font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100"
-                  {...cancelButtonProps}
+                  onClick={handleBack}
+                  className="duration-350 rounded-lg px-5 py-2.5 text-sm transition font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  {...backButtonProps}
                 >
-                  {cancelButtonText}
+                  {backButtonText}
                 </button>
               )}
-              
-              {/* Right: Navigation buttons */}
-              <div className="flex gap-2 ml-auto">
-                {currentStep !== 1 && (
-                  <button
-                    onClick={handleBack}
-                    className="duration-350 rounded-lg px-3 py-1.5 text-sm transition font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100"
-                    {...backButtonProps}
-                  >
-                    {backButtonText}
-                  </button>
-                )}
-                <button
-                  onClick={isLastStep ? handleComplete : handleNext}
-                  className="duration-350 flex items-center justify-center rounded-lg bg-gradient-to-r from-violet-400 to-purple-300 py-1.5 px-5 text-sm font-medium tracking-tight text-white transition hover:opacity-90"
-                  {...nextButtonProps}
-                >
-                  {isLastStep ? 'Complete' : nextButtonText}
-                </button>
+              <button
+                onClick={isLastStep ? handleComplete : handleNext}
+                className="duration-350 flex items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 py-2.5 px-8 text-base font-semibold tracking-tight text-white transition hover:opacity-90 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:hover:opacity-50"
+                {...nextButtonProps}
+              >
+                {isLastStep ? 'Complete' : nextButtonText}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : (
+        /* Loading State after completion */
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="flex flex-col items-center justify-center py-16"
+        >
+          <div className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-2xl border-2 border-violet-300 p-8 max-w-md w-full">
+            <div className="flex flex-col items-center text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-violet-600 mb-6"></div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Processing Your Request</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Please wait while we process your model registration...
+              </p>
+              <div className="flex items-center gap-2 text-xs text-violet-600 font-medium">
+                <svg className="w-4 h-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>This may take a few moments</span>
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </motion.div>
+      )}
     </div>
   );
 }
@@ -285,11 +308,11 @@ function StepIndicator({ step, currentStep, onClickStep, disableStepIndicators =
       <motion.div
         variants={{
           inactive: { scale: 1, backgroundColor: '#e5e7eb', color: '#9ca3af' },
-          active: { scale: 1, backgroundColor: '#a78bfa', color: '#a78bfa' },
-          complete: { scale: 1, backgroundColor: '#a78bfa', color: '#a78bfa' }
+          active: { scale: 1.1, backgroundColor: '#8b5cf6', color: '#8b5cf6' },
+          complete: { scale: 1, backgroundColor: '#8b5cf6', color: '#8b5cf6' }
         }}
         transition={{ duration: 0.3 }}
-        className="flex h-8 w-8 items-center justify-center rounded-full font-semibold shadow-sm"
+        className="flex h-12 w-12 items-center justify-center rounded-full font-semibold shadow-md"
       >
         {status === 'complete' ? (
           <CheckIcon className="h-4 w-4 text-white" />

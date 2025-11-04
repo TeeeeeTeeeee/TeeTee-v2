@@ -76,6 +76,27 @@ export const INFT_ABI = [
     "stateMutability": "view",
     "type": "function"
   },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "burn",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "ownerBurn",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
 ]
 
 /**
@@ -188,9 +209,63 @@ export function useAuthorizeINFT() {
 }
 
 /**
- * Custom hook to check if a user is authorized for an INFT
+ * Custom hook for burning INFT tokens (owner-only, transfers to blackhole)
  */
-export function useCheckINFTAuthorization(tokenId: number = 1, userAddress?: string) {
+export function useBurnINFT() {
+  const { writeContract, data: hash, isPending } = useWriteContract()
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
+  const [error, setError] = useState<string | null>(null)
+
+  const burn = async (tokenId: string | number) => {
+    setError(null)
+    
+    if (!tokenId) {
+      setError('Token ID is required')
+      return false
+    }
+
+    try {
+      // Use ownerBurn which transfers to blackhole address (simpler than _burn)
+      await writeContract({
+        address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
+        abi: INFT_ABI,
+        functionName: 'ownerBurn',
+        args: [BigInt(tokenId)],
+      })
+      return true
+    } catch (err: any) {
+      const errorMessage = err?.message || 'Unknown error'
+      setError(errorMessage)
+      console.error('Owner burn failed:', err)
+      console.error('Full error details:', err)
+      return false
+    }
+  }
+
+  return {
+    burn,
+    isPending,
+    isConfirming,
+    isConfirmed,
+    error,
+    hash,
+  }
+}
+
+/**
+ * Custom hook to check if a user is authorized for an INFT
+ * 
+ * IMPORTANT: This hook only checks INFTs from the specific contract address 
+ * defined in networkConfig.ts (CONTRACT_ADDRESSES.INFT).
+ * Generic INFTs from other contracts are automatically excluded since we're 
+ * querying a specific contract address.
+ */
+export function useCheckINFTAuthorization(
+  tokenId: number = 1, 
+  userAddress?: string
+) {
+  // Check if user is authorized for the INFT from our specific contract
+  // Only INFTs minted from CONTRACT_ADDRESSES.INFT are valid
   const { data: isAuthorized, refetch } = useReadContract({
     address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
     abi: INFT_ABI,
@@ -203,6 +278,7 @@ export function useCheckINFTAuthorization(tokenId: number = 1, userAddress?: str
 
   return {
     isAuthorized: !!isAuthorized,
+    contractAddress: CONTRACT_ADDRESSES.INFT, // The specific INFT contract address being checked
     refetch,
   }
 }

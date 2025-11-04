@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { deleteSession } from '../../utils/json-storage';
+import { connectToDatabase } from '../../utils/mongodb';
 
 type SuccessResponse = {
   success: boolean;
@@ -26,12 +26,17 @@ export default async function handler(
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
-    // Delete the session from local JSON storage
-    const deleted = deleteSession(sessionId);
-
-    if (!deleted) {
+    // Delete the session from MongoDB only
+    const { db } = await connectToDatabase();
+    const chatSessionsCollection = db.collection('chatSessions');
+    
+    const result = await chatSessionsCollection.deleteOne({ sessionId: sessionId });
+    
+    if (result.deletedCount === 0) {
       return res.status(404).json({ error: 'Session not found' });
     }
+    
+    console.log(`Deleted session ${sessionId} from MongoDB`);
 
     return res.status(200).json({
       success: true,

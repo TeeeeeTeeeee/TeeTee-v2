@@ -17,7 +17,7 @@ async function main() {
   console.log("💰 Deployer balance:", ethers.formatEther(balance), "OG");
   
   // Use existing oracle
-  const ORACLE_ADDRESS = '0x567e70a52AB420c525D277b0020260a727A735dB';
+  const ORACLE_ADDRESS = '0x3417cD975f456068B3401192A76fD64f7E14E94F';
   console.log("🔮 Using existing Oracle at:", ORACLE_ADDRESS);
   
   // Deploy fixed DataVerifierAdapter

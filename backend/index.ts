@@ -3,7 +3,7 @@ import cors from 'cors';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JsonRpcProvider, Contract } from 'ethers';
+import { JsonRpcProvider, Contract, Wallet } from 'ethers';
 import * as dotenv from 'dotenv';
 import axios, { AxiosResponse } from 'axios';
 import { rateLimit } from 'express-rate-limit';
@@ -48,7 +48,8 @@ const INFT_ABI = [
   "function isAuthorized(uint256 tokenId, address user) view returns (bool)",
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function encryptedURI(uint256 tokenId) view returns (string)",
-  "function metadataHash(uint256 tokenId) view returns (bytes32)"
+  "function metadataHash(uint256 tokenId) view returns (bytes32)",
+  "function authorizeUsage(uint256 tokenId, address user)"
 ];
 
 interface InferRequest {
@@ -78,11 +79,13 @@ interface InferResponse {
 
 interface QuotesData {
   version: string;
-  quotes: string[];
+  systemPrompt: string;
+  capabilities: string[];
+  guidelines: string[];
   metadata: {
     created: string;
     description: string;
-    totalQuotes: number;
+    type: string;
     category: string;
   };
 }
@@ -158,6 +161,8 @@ class INFTOracleService {
   private app: express.Application;
   private provider!: JsonRpcProvider;
   private inftContract!: Contract;
+  private ownerWallet!: Wallet;
+  private inftContractWithSigner!: Contract;
   private devKeys!: DevKeys;
   private llmConfig!: LLMConfig;
   private llmCircuitBreaker!: CircuitBreaker<[string], string>;
@@ -206,6 +211,17 @@ class INFTOracleService {
 
     this.provider = new JsonRpcProvider(network.rpcUrl);
     this.inftContract = new Contract(contracts.INFT, INFT_ABI, this.provider);
+
+    // Initialize owner wallet for auto-authorization
+    const privateKey = process.env.PRIVATE_KEY || process.env.OWNER_PRIVATE_KEY;
+    if (!privateKey) {
+      console.warn('⚠️  Warning: No PRIVATE_KEY found in .env - Auto-authorization will be disabled');
+    } else {
+      this.ownerWallet = new Wallet(privateKey, this.provider);
+      this.inftContractWithSigner = new Contract(contracts.INFT, INFT_ABI, this.ownerWallet);
+      console.log('🔑 Owner wallet initialized for auto-authorization');
+      console.log('  - Owner Address:', this.ownerWallet.address);
+    }
 
     console.log('🔗 Blockchain initialized:');
     console.log('  - Network:', networkInfo.name, `(${networkInfo.isMainnet ? 'MAINNET' : 'TESTNET'})`);
@@ -444,6 +460,9 @@ class INFTOracleService {
     // Streaming inference endpoint
     this.app.post('/infer/stream', this.handleStreamingInferRequest.bind(this));
 
+    // Auto-authorize INFT endpoint (owner only)
+    this.app.post('/authorize-inft', this.handleAuthorizeINFT.bind(this));
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({ error: 'Endpoint not found' });
@@ -486,11 +505,13 @@ class INFTOracleService {
       const request: InferRequest = req.body;
       const requestId = req.headers['x-request-id'] as string;
       
+      console.log(`[${requestId}] Received tokenId:`, request.tokenId, `(type: ${typeof request.tokenId})`);
+      
       // Validate request
-      if (!request.tokenId || typeof request.tokenId !== 'number') {
+      if (typeof request.tokenId !== 'number' || !Number.isFinite(request.tokenId) || request.tokenId < 0) {
         res.status(400).json({ 
           success: false, 
-          error: 'Invalid tokenId. Must be a number.' 
+          error: `Invalid tokenId. Must be a number. Received: ${request.tokenId} (type: ${typeof request.tokenId})` 
         });
         return;
       }
@@ -529,16 +550,18 @@ class INFTOracleService {
 
       // Check authorization
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
-      let isAuthorized = false;
+      let owner: string;
+      let isAuthorized: boolean;
       
       try {
+        owner = await this.inftContract.ownerOf(request.tokenId);
         isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
-        console.log(`[${requestId}] Authorization check: ${isAuthorized}`);
+        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
       } catch (error) {
-        console.error(`[${requestId}] Authorization check failed:`, error);
-        res.status(403).json({
+        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        res.status(404).json({
           success: false,
-          error: 'Authorization check failed. Token may not exist.'
+          error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.`
         });
         return;
       }
@@ -546,7 +569,7 @@ class INFTOracleService {
       if (!isAuthorized) {
         res.status(403).json({
           success: false,
-          error: 'Access denied. You are not authorized to use this INFT.'
+          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
         });
         return;
       }
@@ -570,8 +593,8 @@ class INFTOracleService {
         output = await this.performLLMInference(sanitizedInput, quotesData);
       } catch (error) {
         console.error(`[${requestId}] LLM inference failed:`, error);
-        // Fallback to random quote
-        output = quotesData.quotes[Math.floor(Math.random() * quotesData.quotes.length)];
+        // Fallback message
+        output = "I'm currently experiencing difficulties. Please try again in a moment.";
       }
 
       // Generate proof
@@ -611,16 +634,37 @@ class INFTOracleService {
       const requestId = req.headers['x-request-id'] as string;
       
       // Validate and authorize (same as regular inference)
-      if (!request.tokenId || !request.input) {
-        res.status(400).json({ error: 'Invalid request' });
+      if (typeof request.tokenId !== 'number' || !Number.isFinite(request.tokenId) || request.tokenId < 0) {
+        res.status(400).json({ 
+          error: `Invalid tokenId. Must be a number. Received: ${request.tokenId} (type: ${typeof request.tokenId})` 
+        });
+        return;
+      }
+      
+      if (!request.input || typeof request.input !== 'string') {
+        res.status(400).json({ error: 'Invalid input. Must be a non-empty string.' });
         return;
       }
 
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
-      const isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
+      
+      // Check if token exists and get owner
+      let owner: string;
+      let isAuthorized: boolean;
+      try {
+        owner = await this.inftContract.ownerOf(request.tokenId);
+        isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
+        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
+      } catch (error) {
+        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        res.status(404).json({ error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.` });
+        return;
+      }
 
       if (!isAuthorized) {
-        res.status(403).json({ error: 'Access denied' });
+        res.status(403).json({ 
+          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}` 
+        });
         return;
       }
 
@@ -657,6 +701,92 @@ class INFTOracleService {
   }
 
   /**
+   * Handle auto-authorization of INFT
+   * Uses contract owner's private key to automatically authorize users
+   */
+  private async handleAuthorizeINFT(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { tokenId, userAddress } = req.body;
+      const requestId = req.headers['x-request-id'] as string;
+
+      // Validate request
+      if (!tokenId || !userAddress) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Missing required fields: tokenId and userAddress' 
+        });
+        return;
+      }
+
+      // Check if wallet is initialized
+      if (!this.ownerWallet || !this.inftContractWithSigner) {
+        console.error(`[${requestId}] Auto-authorization failed: No owner wallet configured`);
+        res.status(500).json({ 
+          success: false,
+          error: 'Auto-authorization not available. PRIVATE_KEY not configured.' 
+        });
+        return;
+      }
+
+      console.log(`[${requestId}] Auto-authorizing user ${userAddress} for INFT #${tokenId}...`);
+
+      // Check if token exists
+      try {
+        const owner = await this.inftContract.ownerOf(tokenId);
+        console.log(`[${requestId}] INFT #${tokenId} owner: ${owner}`);
+      } catch (error) {
+        console.error(`[${requestId}] INFT #${tokenId} does not exist`);
+        res.status(404).json({ 
+          success: false,
+          error: `INFT token #${tokenId} does not exist` 
+        });
+        return;
+      }
+
+      // Check if already authorized
+      const alreadyAuthorized = await this.inftContract.isAuthorized(tokenId, userAddress);
+      if (alreadyAuthorized) {
+        console.log(`[${requestId}] User ${userAddress} is already authorized for INFT #${tokenId}`);
+        res.json({ 
+          success: true,
+          message: 'User is already authorized',
+          txHash: null
+        });
+        return;
+      }
+
+      // Call authorizeUsage with owner's wallet
+      console.log(`[${requestId}] Sending authorization transaction...`);
+      const tx = await this.inftContractWithSigner.authorizeUsage(tokenId, userAddress);
+      
+      console.log(`[${requestId}] Transaction submitted: ${tx.hash}`);
+      console.log(`[${requestId}] Waiting for confirmation...`);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      
+      console.log(`[${requestId}] ✅ Authorization confirmed! Block: ${receipt.blockNumber}`);
+      
+      res.json({ 
+        success: true,
+        message: 'User authorized successfully',
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber
+      });
+
+    } catch (error: any) {
+      const requestId = req.headers['x-request-id'] as string;
+      console.error(`[${requestId}] Auto-authorization error:`, error);
+      
+      res.status(500).json({ 
+        success: false,
+        error: error?.message || 'Authorization failed',
+        details: error?.reason || error?.code
+      });
+    }
+  }
+
+  /**
    * Fetch and decrypt data from 0G Storage
    */
   private async fetchAndDecryptData(): Promise<QuotesData> {
@@ -670,21 +800,26 @@ class INFTOracleService {
     }
 
     // Fallback: return demo data
-    console.log('Using demo quotes data');
+    console.log('Using demo AI assistant configuration');
     return {
       version: '1.0',
-      quotes: [
-        "The only way to do great work is to love what you do. - Steve Jobs",
-        "Innovation distinguishes between a leader and a follower. - Steve Jobs",
-        "Stay hungry, stay foolish. - Steve Jobs",
-        "The future belongs to those who believe in the beauty of their dreams. - Eleanor Roosevelt",
-        "Success is not final, failure is not fatal: it is the courage to continue that counts. - Winston Churchill"
+      systemPrompt: 'You are a helpful AI assistant powered by TeeTee. Provide accurate, concise, and friendly responses.',
+      capabilities: [
+        'Answer general knowledge questions',
+        'Explain concepts simply',
+        'Help with technical problems',
+        'Provide helpful suggestions'
+      ],
+      guidelines: [
+        'Be concise and clear',
+        'Provide accurate information',
+        'Be helpful and friendly'
       ],
       metadata: {
         created: new Date().toISOString(),
-        description: 'Inspirational quotes',
-        totalQuotes: 5,
-        category: 'motivation'
+        description: 'General purpose AI assistant (demo)',
+        type: 'ai-assistant',
+        category: 'general'
       }
     };
   }
@@ -736,7 +871,7 @@ class INFTOracleService {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': this.llmConfig.apiKey,
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
             'Accept': 'application/json'
           }
         }
@@ -802,7 +937,7 @@ class INFTOracleService {
           timeout: this.llmConfig.requestTimeoutMs,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': this.llmConfig.apiKey,
+            'Authorization': `Bearer ${this.llmConfig.apiKey}`,
             'Accept': 'application/json'
           }
         }
@@ -848,18 +983,21 @@ class INFTOracleService {
       throw new Error('LLM API key not configured');
     }
 
-    // Build context from quotes
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    // Build prompt using general AI assistant format
+    const capabilities = quotesData.capabilities.join('\n- ');
+    const guidelines = quotesData.guidelines.join('\n- ');
+    
+    const prompt = `${quotesData.systemPrompt}
 
-    const prompt = `You are a concise assistant. Use the provided context strictly. Return a single inspirational quote tailored to the user's input.
+Your Capabilities:
+- ${capabilities}
 
-Input: "${input}"
+Guidelines:
+- ${guidelines}
 
-Context quotes:
-${context}
+User Question: "${input}"
 
-Respond with only the quote text. No prefatory wording.`;
+Provide a helpful, concise response:`;
 
     try {
       // Use circuit breaker for LLM call
@@ -870,9 +1008,8 @@ Respond with only the quote text. No prefatory wording.`;
       
       // Fallback policy based on configuration
       if (this.llmConfig.devFallback && !error?.message?.includes('LLM_CIRCUIT_OPEN')) {
-        console.log('⚠️ Using random quote fallback');
-        const randomIndex = Math.floor(Math.random() * quotesData.quotes.length);
-        return quotesData.quotes[randomIndex];
+        console.log('⚠️ Using fallback response');
+        return "I'm here to help! Please try your question again.";
       }
       
       throw error;
@@ -891,10 +1028,21 @@ Respond with only the quote text. No prefatory wording.`;
       throw new Error('LLM API key not configured');
     }
 
-    const contextQuotes = quotesData.quotes.slice(0, this.llmConfig.maxContextQuotes);
-    const context = contextQuotes.map((q, i) => `${i + 1}. ${q}`).join('\n');
+    // Build prompt using general AI assistant format
+    const capabilities = quotesData.capabilities.join('\n- ');
+    const guidelines = quotesData.guidelines.join('\n- ');
+    
+    const prompt = `${quotesData.systemPrompt}
 
-    const prompt = `You are a concise assistant. Return a single inspirational quote tailored to: "${input}"\n\nContext:\n${context}`;
+Your Capabilities:
+- ${capabilities}
+
+Guidelines:
+- ${guidelines}
+
+User Question: "${input}"
+
+Provide a helpful, concise response:`;
 
     try {
       const response = await axios.post(
@@ -969,7 +1117,7 @@ Respond with only the quote text. No prefatory wording.`;
    */
   private generateProof(input: string, output: string, quotesData: QuotesData): string {
     const promptHash = crypto.createHash('sha256').update(input).digest('hex');
-    const contextHash = crypto.createHash('sha256').update(JSON.stringify(quotesData.quotes)).digest('hex');
+    const contextHash = crypto.createHash('sha256').update(quotesData.systemPrompt).digest('hex');
     const completionHash = crypto.createHash('sha256').update(output).digest('hex');
 
     const proofData = {
@@ -1006,10 +1154,11 @@ Respond with only the quote text. No prefatory wording.`;
       console.log(`✅ Network Mode: ${networkInfo.isMainnet ? '🔴 MAINNET' : '🟡 TESTNET'}`);
       console.log(`✅ INFT Contract: ${this.inftContract.target}`);
       console.log(`\n📡 Endpoints:`);
-      console.log(`   - GET  /health         - Service health check`);
-      console.log(`   - GET  /llm/health     - LLM health check`);
-      console.log(`   - POST /infer          - Run inference`);
-      console.log(`   - POST /infer/stream   - Streaming inference`);
+      console.log(`   - GET  /health           - Service health check`);
+      console.log(`   - GET  /llm/health       - LLM health check`);
+      console.log(`   - POST /authorize-inft   - Auto-authorize INFT (owner only)`);
+      console.log(`   - POST /infer            - Run inference`);
+      console.log(`   - POST /infer/stream     - Streaming inference`);
       console.log(`\n🔐 Security:`);
       console.log(`   - Rate limiting: 30 req/min`);
       console.log(`   - Input sanitization: enabled`);
