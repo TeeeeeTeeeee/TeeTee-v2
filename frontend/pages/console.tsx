@@ -370,28 +370,48 @@ const DashboardPage = () => {
         
         try {
           // Get the current token ID counter from the contract
-          // Note: getCurrentTokenId() returns the NEXT token to be minted, so we subtract 1
-          const nextTokenId = await readContract(config, {
+          // IMPORTANT: getCurrentTokenId() returns the NEXT token to be minted
+          // After minting, the counter increments, so we subtract 1 to get the just-minted token
+          const currentCounter = await readContract(config, {
             address: INFT_ADDRESSES.INFT as `0x${string}`,
             abi: INFT_ABI,
             functionName: 'getCurrentTokenId',
             args: []
           }) as bigint;
           
-          const tokenId = Number(nextTokenId) - 1; // Subtract 1 to get the just-minted token
-          console.log('Minted INFT tokenId:', tokenId);
+          // Calculate the just-minted token ID
+          // Counter starts at 1, after first mint it becomes 2
+          // So: counter=2 means token 1 was minted, counter=3 means token 2 was minted, etc.
+          let tokenId = Number(currentCounter) - 1;
+          
+          // Safety check: if counter is still 1, the contract might be old version
+          // In this case, assume it's the first token (ID 1) since the mint was confirmed
+          if (tokenId < 1) {
+            console.warn(`Counter is at ${currentCounter}, assuming first token (ID 1)`);
+            tokenId = 1;
+          }
+          
+          console.log('Minted INFT - Counter:', Number(currentCounter), '→ TokenId:', tokenId, 'for user:', connectedAddress);
+          
+          if (!connectedAddress) {
+            throw new Error('User address is not available');
+          }
           
           const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+          
+          const requestBody = {
+            tokenId: tokenId,
+            userAddress: connectedAddress
+          };
+          
+          console.log('Sending authorization request:', requestBody);
           
           const response = await fetch(`${backendUrl}/authorize-inft`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              tokenId,
-              userAddress: connectedAddress
-            })
+            body: JSON.stringify(requestBody)
           });
           
           const data = await response.json();

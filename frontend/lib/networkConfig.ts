@@ -54,9 +54,9 @@ export const zgMainnet = {
 // Generic INFTs from other contracts are automatically excluded
 export const CONTRACT_ADDRESSES = {
   testnet: {
-    INFT: '0x3CD38a620e26cd3f4051b1fcA1AB27945b8F23d9', // Your specific INFT contract for free usage
-    DATA_VERIFIER: '0xd6f8Bf7F7D2546404D503387b1537C77bca4E40d',
-    ORACLE_STUB: '0x6A6f2E257aCBC8c3723A4EBfF99523Cdb64373f0',
+    INFT: '0x991C80858CF6010BF3c4c4a3d55CDD43617a1d4f', // Your specific INFT contract for free usage
+    DATA_VERIFIER: '0x3e401aDF6e87a2EE30F430ab3E8929572Aa31848',
+    ORACLE_STUB: '0x63EA21B56c457730a4B5Faf9DdcE76E7b91c5008',
   },
   mainnet: {
     // 0G Storage Contract Addresses on Mainnet

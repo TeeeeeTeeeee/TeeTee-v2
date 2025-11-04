@@ -546,22 +546,24 @@ class INFTOracleService {
         return;
       }
 
-      console.log(`[${requestId}] Processing inference for token ${request.tokenId}`);
+      console.log(`[${requestId}] Processing inference for model ${request.tokenId}`);
 
-      // Check authorization
+      // Check INFT authorization (always check token 1 - the first INFT)
+      // Note: request.tokenId is the MODEL ID (0-based), not INFT token ID
+      const inftTokenId = 1; // Always use INFT token 1 for authorization
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
       let owner: string;
       let isAuthorized: boolean;
       
       try {
-        owner = await this.inftContract.ownerOf(request.tokenId);
-        isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
-        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
+        owner = await this.inftContract.ownerOf(inftTokenId);
+        isAuthorized = await this.inftContract.isAuthorized(inftTokenId, userAddress);
+        console.log(`[${requestId}] INFT token ${inftTokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
       } catch (error) {
-        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        console.error(`[${requestId}] INFT token ${inftTokenId} does not exist or error checking:`, error);
         res.status(404).json({
           success: false,
-          error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.`
+          error: `INFT token #${inftTokenId} does not exist. Please mint an INFT first.`
         });
         return;
       }
@@ -569,7 +571,7 @@ class INFTOracleService {
       if (!isAuthorized) {
         res.status(403).json({
           success: false,
-          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
+          error: `Access denied. You are not authorized to use INFT #${inftTokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
         });
         return;
       }
@@ -709,11 +711,21 @@ class INFTOracleService {
       const { tokenId, userAddress } = req.body;
       const requestId = req.headers['x-request-id'] as string;
 
-      // Validate request
-      if (!tokenId || !userAddress) {
+      console.log(`[${requestId}] Authorization request - tokenId: ${tokenId} (type: ${typeof tokenId}), userAddress: ${userAddress}`);
+
+      // Validate request - INFT tokens start at 1
+      if (typeof tokenId !== 'number' || !Number.isFinite(tokenId) || tokenId < 1) {
         res.status(400).json({ 
           success: false,
-          error: 'Missing required fields: tokenId and userAddress' 
+          error: `Invalid tokenId. Must be >= 1. Received: ${tokenId} (type: ${typeof tokenId})` 
+        });
+        return;
+      }
+      
+      if (!userAddress || typeof userAddress !== 'string') {
+        res.status(400).json({ 
+          success: false,
+          error: `Invalid userAddress. Must be a string. Received: ${userAddress} (type: ${typeof userAddress})` 
         });
         return;
       }

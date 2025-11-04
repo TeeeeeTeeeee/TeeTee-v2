@@ -109,6 +109,7 @@ const ChatPage = () => {
   // Check if user has INFT authorization
   // Only INFTs from the specific contract address in networkConfig.ts are recognized
   // Generic INFTs from other contracts are automatically excluded
+  // Using tokenId 1 (INFT tokens start at 1, separate from 0-based LLM array)
   const { isAuthorized: hasINFT, contractAddress: inftContractAddress, refetch: refetchINFT } = useCheckINFTAuthorization(
     1, 
     address
@@ -497,6 +498,12 @@ const ChatPage = () => {
       return;
     }
     
+    // Check if there are any complete models available
+    if (hostedModels.length === 0) {
+      alert('No complete models available. Please wait for models to be fully hosted before using the chat.');
+      return;
+    }
+    
     // Check if user has credits or INFT before proceeding
     const userCredits = Number(myCredits || 0);
     const hasCredits = userCredits > 0;
@@ -533,10 +540,10 @@ const ChatPage = () => {
         const tokenIds = encode(message);
         const tokensUsed = BigInt(tokenIds.length);
         
-        // Use selected model ID for credit deduction, fallback to 1
+        // Use selected model ID for credit deduction, fallback to 0 (0-based indexing)
         const llmIdForCredits = selectedModelId !== null && selectedModelId !== undefined 
           ? BigInt(selectedModelId) 
-          : 1n;
+          : 0n;
         
         console.log(`Deducting ${tokensUsed} tokens for LLM ID: ${llmIdForCredits} (selected: ${selectedModelId})`);
         await usePrompt(llmIdForCredits, tokensUsed);
@@ -566,22 +573,22 @@ const ChatPage = () => {
     // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      // Use selected model ID, fallback to 1 if not set
-      // For hosted INFT: tokenId represents the blockchain model ID to use
-      let tokenId = 1; // Default fallback
+      // Model ID is 0-based (LLM array in creditUse.sol starts at 0)
+      // This is separate from INFT token ID which starts at 1
+      let modelId = 0; // Default fallback to first model
       if (selectedModelId !== null && selectedModelId !== undefined) {
-        tokenId = Number(selectedModelId); // Ensure it's a number
+        modelId = Number(selectedModelId); // Ensure it's a number
       }
       
-      console.log(`Running inference with model ID: ${tokenId} (type: ${typeof tokenId}) (useINFT: ${useINFTInference}, hasINFT: ${hasINFT})`);
+      console.log(`Running inference with model ID: ${modelId} (type: ${typeof modelId}) (useINFT: ${useINFTInference}, hasINFT: ${hasINFT})`);
       
-      // Validate tokenId is a valid number
-      if (isNaN(tokenId) || !Number.isFinite(tokenId)) {
+      // Validate modelId is a valid number
+      if (isNaN(modelId) || !Number.isFinite(modelId) || modelId < 0) {
         throw new Error('Invalid model ID selected. Please select a valid model.');
       }
       
-      // Use INFT inference with selected model ID
-      const inferenceResult = await runINFTInference(tokenId, message, address);
+      // Use INFT inference with selected model ID (0-based for LLM array)
+      const inferenceResult = await runINFTInference(modelId, message, address);
       
       const text = inferenceResult?.output || 'No response from INFT';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
@@ -684,16 +691,16 @@ const ChatPage = () => {
             )}
           </div>
           
-          {/* No Models Available Message */}
+          {/* No Models Available Warning */}
           {!isLoadingModels && hostedModels.length === 0 && (
-            <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-xs text-yellow-800 font-medium mb-1">No models available</p>
-              <p className="text-xs text-yellow-700 mb-2">There are no complete hosted models yet.</p>
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-xs text-red-800 font-medium mb-1">⚠️ No Complete Models</p>
+              <p className="text-xs text-red-700 mb-2">Chat is disabled until a model is fully hosted with 2 hosts.</p>
               <Link 
                 href="/models" 
                 className="text-xs text-violet-600 hover:text-violet-700 font-medium underline"
               >
-                Go to Models page →
+                View Models page →
               </Link>
             </div>
           )}
@@ -1080,20 +1087,22 @@ const ChatPage = () => {
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && hostedModels.length > 0) {
                         handleSendMessage();
                       }
                     }}
-                    placeholder="Ask anything"
-                    className="flex-1 px-3 py-1 text-gray-900 placeholder-gray-500 bg-transparent border-none outline-none resize-none font-inter"
+                    placeholder={hostedModels.length === 0 ? "No models available..." : "Ask anything"}
+                    disabled={hostedModels.length === 0}
+                    className="flex-1 px-3 py-1 text-gray-900 placeholder-gray-500 bg-transparent border-none outline-none resize-none font-inter disabled:cursor-not-allowed disabled:text-gray-400"
                   />
 
                   {/* Send Icon */}
                   <button 
                     onClick={handleSendMessage}
                     className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-                    disabled={isUsingPrompt || isGenerating || isINFTInferring || !message.trim()}
+                    disabled={isUsingPrompt || isGenerating || isINFTInferring || !message.trim() || hostedModels.length === 0}
                     title={
+                      hostedModels.length === 0 ? 'No complete models available' :
                       isUsingPrompt ? 'Waiting for transaction…' : 
                       isINFTInferring || isGenerating ? 'INFT is processing...' : 
                       'Send'

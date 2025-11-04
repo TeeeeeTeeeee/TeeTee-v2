@@ -132,7 +132,7 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     ) ERC721(_name, _symbol) Ownable(_initialOwner) {
         require(_dataVerifier != address(0), "DataVerifier address cannot be zero");
         dataVerifier = IDataVerifierAdapter(_dataVerifier);
-        _tokenIdCounter = 1; // Start token IDs from 1
+        _tokenIdCounter = 1; // Start token IDs from 1 (INFT standard)
     }
     
     // ================================
