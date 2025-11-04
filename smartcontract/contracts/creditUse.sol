@@ -18,12 +18,11 @@ contract CreditUse {
         string shardUrl2;
         string modelName;
         uint256 poolBalance;      // Pool balance in wei (0G) allocated to this LLM
-        uint256 totalTimeHost1;   // total tracking time in minutes for host1
-        uint256 totalTimeHost2;   // total tracking time in minutes for host2
-        uint256 downtimeHost1;
-        uint256 downtimeHost2;
+        uint256 registeredAtHost1;   // Timestamp when host1 registered
+        uint256 registeredAtHost2;   // Timestamp when host2 registered
         uint256 lastWithdrawHost1; // Last pool balance when host1 withdrew
         uint256 lastWithdrawHost2; // Last pool balance when host2 withdrew
+        uint256 usageCount;       // Number of times this model has been used
         bool isComplete;          // true if both hosts are registered
     }
 
@@ -66,15 +65,15 @@ contract CreditUse {
         
         if (hostNumber == 1) {
             uint256 newEarnings = entry.poolBalance - entry.lastWithdrawHost1;
-            if (newEarnings > 0 && entry.totalTimeHost1 > 0) {
-                uint256 uptimePercent = ((entry.totalTimeHost1 - entry.downtimeHost1) * 1e18) / entry.totalTimeHost1;
-                reward = (newEarnings * uptimePercent) / (2 * 1e18);
+            if (newEarnings > 0) {
+                // Split 50/50 between both hosts
+                reward = newEarnings / 2;
             }
         } else {
             uint256 newEarnings = entry.poolBalance - entry.lastWithdrawHost2;
-            if (newEarnings > 0 && entry.totalTimeHost2 > 0) {
-                uint256 uptimePercent = ((entry.totalTimeHost2 - entry.downtimeHost2) * 1e18) / entry.totalTimeHost2;
-                reward = (newEarnings * uptimePercent) / (2 * 1e18);
+            if (newEarnings > 0) {
+                // Split 50/50 between both hosts
+                reward = newEarnings / 2;
             }
         }
         
@@ -107,6 +106,7 @@ contract CreditUse {
         userCredits[msg.sender] -= tokensUsed;
         generalPool -= moneyAmount; // Deduct from general pool
         hostedLLMs[llmId].poolBalance += moneyAmount; // Add money (not credits) to LLM pool
+        hostedLLMs[llmId].usageCount += 1; // Increment usage counter
     }
 
     // Register or update LLM - if field is 0/empty, it keeps existing value
@@ -116,9 +116,7 @@ contract CreditUse {
         address host2,
         string calldata shardUrl1,
         string calldata shardUrl2,
-        string calldata modelName,
-        uint256 totalTimeHost1,
-        uint256 totalTimeHost2
+        string calldata modelName
     ) external returns (uint256) {
         // Create new entry if llmId >= array length
         if (llmId >= hostedLLMs.length) {
@@ -132,12 +130,11 @@ contract CreditUse {
                     shardUrl2: shardUrl2,
                     modelName: modelName,
                     poolBalance: 0,
-                    totalTimeHost1: totalTimeHost1,
-                    totalTimeHost2: totalTimeHost2,
-                    downtimeHost1: 0,
-                    downtimeHost2: 0,
+                    registeredAtHost1: (host1 != address(0)) ? block.timestamp : 0,
+                    registeredAtHost2: (host2 != address(0)) ? block.timestamp : 0,
                     lastWithdrawHost1: 0,
                     lastWithdrawHost2: 0,
+                    usageCount: 0,
                     isComplete: (host1 != address(0) && host2 != address(0))
                 })
             );
@@ -147,11 +144,13 @@ contract CreditUse {
         // Update existing entry - only update non-zero/non-empty fields
         HostedLLMEntry storage entry = hostedLLMs[llmId];
         
-        if (host1 != address(0)) {
+        if (host1 != address(0) && entry.host1 == address(0)) {
             entry.host1 = host1;
+            entry.registeredAtHost1 = block.timestamp;
         }
-        if (host2 != address(0)) {
+        if (host2 != address(0) && entry.host2 == address(0)) {
             entry.host2 = host2;
+            entry.registeredAtHost2 = block.timestamp;
         }
         if (bytes(shardUrl1).length > 0) {
             entry.shardUrl1 = shardUrl1;
@@ -162,12 +161,6 @@ contract CreditUse {
         if (bytes(modelName).length > 0) {
             entry.modelName = modelName;
         }
-        if (totalTimeHost1 > 0) {
-            entry.totalTimeHost1 = totalTimeHost1;
-        }
-        if (totalTimeHost2 > 0) {
-            entry.totalTimeHost2 = totalTimeHost2;
-        }
         
         // Update completion status
         entry.isComplete = (entry.host1 != address(0) && entry.host2 != address(0));
@@ -175,22 +168,19 @@ contract CreditUse {
         return llmId;
     }
     
-    function reportDowntime(uint256 llmId, uint256 minutesDownHost1, uint256 minutesDownHost2) external onlyOwner {
+    // Get total hosting time for a specific host (in seconds)
+    function getHostingTime(uint256 llmId, uint8 hostNumber) external view returns (uint256) {
         require(llmId < hostedLLMs.length, "Invalid LLM");
+        require(hostNumber == 1 || hostNumber == 2, "Invalid host number");
+        
         HostedLLMEntry storage entry = hostedLLMs[llmId];
-
-        if (minutesDownHost1 > 0) {
-            entry.downtimeHost1 += minutesDownHost1;
-            if (entry.downtimeHost1 > entry.totalTimeHost1) {
-                entry.downtimeHost1 = entry.totalTimeHost1; 
-            }
-        }
-
-        if (minutesDownHost2 > 0) {
-            entry.downtimeHost2 += minutesDownHost2;
-            if (entry.downtimeHost2 > entry.totalTimeHost2) {
-                entry.downtimeHost2 = entry.totalTimeHost2;
-            }
+        
+        if (hostNumber == 1) {
+            if (entry.registeredAtHost1 == 0) return 0;
+            return block.timestamp - entry.registeredAtHost1;
+        } else {
+            if (entry.registeredAtHost2 == 0) return 0;
+            return block.timestamp - entry.registeredAtHost2;
         }
     }
 
@@ -216,14 +206,12 @@ contract CreditUse {
         if (hostNumber == 1) {
             entry.host1 = address(0);
             entry.shardUrl1 = "";
-            entry.totalTimeHost1 = 0;
-            entry.downtimeHost1 = 0;
+            entry.registeredAtHost1 = 0;
             entry.lastWithdrawHost1 = 0;
         } else {
             entry.host2 = address(0);
             entry.shardUrl2 = "";
-            entry.totalTimeHost2 = 0;
-            entry.downtimeHost2 = 0;
+            entry.registeredAtHost2 = 0;
             entry.lastWithdrawHost2 = 0;
         }
         

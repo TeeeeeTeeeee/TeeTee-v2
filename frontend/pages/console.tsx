@@ -29,8 +29,9 @@ interface HostedLLM {
   shardUrl1: string;
   shardUrl2?: string;
   poolBalance: bigint;
-  totalTimeHost1: bigint;
-  totalTimeHost2?: bigint;
+  registeredAtHost1: bigint;
+  registeredAtHost2?: bigint;
+  usageCount: bigint;
   isComplete?: boolean;
 }
 
@@ -88,6 +89,22 @@ const DEFAULT_LLM_ICON = 'https://www.redpill.ai/_next/image?url=https%3A%2F%2Ft
 
 const getModelIcon = (modelName: string): string => {
   return LLM_ICONS[modelName] || DEFAULT_LLM_ICON;
+};
+
+// Helper function to format pool balance from Wei (21 decimals) to OG
+const formatPoolBalance = (balance: bigint | undefined): string => {
+  if (!balance) return '0';
+  const weiValue = Number(balance);
+  const ogValue = weiValue / 1e15;
+  return ogValue.toFixed(3); // Show 9 decimal places
+};
+
+// Helper function to format time in seconds to readable format
+const formatHostingTime = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  return `${Math.floor(seconds / 86400)}d`;
 };
 
 const DashboardPage = () => {
@@ -159,9 +176,10 @@ const DashboardPage = () => {
                   shardUrl1: data.shardUrl1 || data[2] || '',
                   shardUrl2: data.shardUrl2 || data[3] || '',
                   poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
-                  totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n),
-                  totalTimeHost2: data.totalTimeHost2 !== undefined ? data.totalTimeHost2 : (data[7] !== undefined ? data[7] : 0n),
-                  isComplete: data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false)
+                  registeredAtHost1: data.registeredAtHost1 !== undefined ? data.registeredAtHost1 : (data[6] !== undefined ? data[6] : 0n),
+                  registeredAtHost2: data.registeredAtHost2 !== undefined ? data.registeredAtHost2 : (data[7] !== undefined ? data[7] : 0n),
+                  usageCount: data.usageCount !== undefined ? data.usageCount : (data[10] !== undefined ? data[10] : 0n),
+                  isComplete: data.isComplete !== undefined ? data.isComplete : (data[11] !== undefined ? data[11] : false)
                 });
               }
             }
@@ -205,7 +223,7 @@ const DashboardPage = () => {
             
             if (data) {
               const host2 = data.host2 || data[1] || '0x0000000000000000000000000000000000000000';
-              const isComplete = data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false);
+              const isComplete = data.isComplete !== undefined ? data.isComplete : (data[11] !== undefined ? data[11] : false);
               
               // Only include models that are incomplete (no second host)
               if (!isComplete && host2 === '0x0000000000000000000000000000000000000000') {
@@ -215,7 +233,9 @@ const DashboardPage = () => {
                   host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
                   shardUrl1: data.shardUrl1 || data[2] || '',
                   poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
-                  totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n),
+                  registeredAtHost1: data.registeredAtHost1 !== undefined ? data.registeredAtHost1 : (data[6] !== undefined ? data[6] : 0n),
+                  registeredAtHost2: 0n,
+                  usageCount: data.usageCount !== undefined ? data.usageCount : (data[10] !== undefined ? data[10] : 0n),
                   isComplete: false
                 });
               }
@@ -272,9 +292,7 @@ const DashboardPage = () => {
         formData.walletAddress,
         '',
         formData.shardUrl,
-        '',
-        0,
-        0
+        ''
       );
     } catch (error) {
       console.error('Failed to join as second host:', error);
@@ -305,9 +323,7 @@ const DashboardPage = () => {
         '0x0000000000000000000000000000000000000000',  // host2 - empty (address zero)
         formData.shardUrl,                              // shardUrl1 - TEE endpoint URL
         '',                                             // shardUrl2 - empty
-        formData.modelName,                            // modelName
-        0,                                              // totalTimeHost1 - will be set by oracle
-        0                                               // totalTimeHost2 - empty
+        formData.modelName                             // modelName
       );
     } catch (error) {
       console.error('Failed to register model:', error);
@@ -566,22 +582,34 @@ const DashboardPage = () => {
                   })(),
                   {
                     color: '#FFFFFF',
-                    title: myHostedModels.filter(m => !m.isComplete).length > 0 ? '⚠️ Pending' : '✓ All Good',
-                    description: `${myHostedModels.filter(m => !m.isComplete).length} model${myHostedModels.filter(m => !m.isComplete).length !== 1 ? 's' : ''} waiting for host`,
-                    label: 'Alerts',
+                    title: (() => {
+                      const totalTime = myHostedModels.reduce((sum, m) => {
+                        const now = Math.floor(Date.now() / 1000);
+                        const time1 = Number(m.registeredAtHost1) > 0 ? now - Number(m.registeredAtHost1) : 0;
+                        const time2 = Number(m.registeredAtHost2 || 0n) > 0 ? now - Number(m.registeredAtHost2 || 0n) : 0;
+                        return sum + time1 + time2;
+                      }, 0);
+                      return formatHostingTime(totalTime);
+                    })(),
+                    description: 'Total time hosting models',
+                    label: 'Total Time Hosted',
                     onClick: () => setActiveTab('mymodels')
                   },
                   {
                     color: '#FFFFFF',
-                    title: '0',
-                    description: 'Coming soon',
-                    label: 'People Used',
+                    title: myHostedModels.reduce((sum, m) => sum + Number(m.usageCount), 0).toString(),
+                    description: 'Total times models were used',
+                    label: 'Usage Count',
                     onClick: () => {}
                   },
                   {
                     color: '#FFFFFF',
-                    title: myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0).toString(),
-                    description: 'Total credits earned from hosting',
+                    title: (() => {
+                      const totalWei = myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0);
+                      const totalOG = totalWei / 1e15;
+                      return totalOG.toFixed(3) + ' 0G';
+                    })(),
+                    description: 'Total earned from hosting',
                     label: 'Earnings Total',
                     onClick: () => router.push('/chat')
                   },
@@ -648,21 +676,21 @@ const DashboardPage = () => {
                           <>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">Shard 1:</span>
-                              <span className="text-gray-700">Lower Layers (1-50)</span>
+                              <span className="text-gray-700 text-xs">Lower Layers (1-50)</span>
                             </div>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">URL 1:</span>
-                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                              <span className="font-mono text-gray-700 break-all text-xs">
                                 {model.shardUrl1?.slice(0, 35)}...
                               </span>
                             </div>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">Shard 2:</span>
-                              <span className="text-gray-700">Upper Layers (51-100)</span>
+                              <span className="text-gray-700 text-xs">Upper Layers (51-100)</span>
                             </div>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">URL 2:</span>
-                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                              <span className="font-mono text-gray-700 break-all text-xs">
                                 {model.shardUrl2?.slice(0, 35)}...
                               </span>
                             </div>
@@ -671,13 +699,13 @@ const DashboardPage = () => {
                           <>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">Shard:</span>
-                              <span className="text-gray-700">
+                              <span className="text-gray-700 text-xs">
                                 {isHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
                               </span>
                             </div>
                             <div className="flex items-start gap-2">
                               <span className="text-gray-500">Your URL:</span>
-                              <span className="font-mono text-gray-700 break-all text-[10px]">
+                              <span className="font-mono text-gray-700 break-all text-xs">
                                 {isHost1 ? model.shardUrl1?.slice(0, 35) : model.shardUrl2?.slice(0, 35)}...
                               </span>
                             </div>
@@ -686,36 +714,57 @@ const DashboardPage = () => {
                         
                         <div className="flex items-start gap-2">
                           <span className="text-gray-500">Pool Balance:</span>
-                          <span className="text-gray-700 font-semibold">{model.poolBalance?.toString() || '0'} credits</span>
+                          <span className="text-gray-700 text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[12px]">0G</span></span>
                         </div>
                         
-                        {/* Total Time */}
+                        {/* Hosting Time */}
                         {isBothHosts ? (
                           <>
                             <div className="flex items-start gap-2">
-                              <span className="text-gray-500">Time (Shard 1):</span>
-                              <span className="text-gray-700">
-                                {model.totalTimeHost1?.toString() || '0'} seconds
+                              <span className="text-gray-500">Hosted (Shard 1):</span>
+                              <span className="text-gray-700 text-xs">
+                                {(() => {
+                                  const now = Math.floor(Date.now() / 1000);
+                                  const startTime = Number(model.registeredAtHost1);
+                                  if (startTime === 0) return 'Not started';
+                                  return formatHostingTime(now - startTime);
+                                })()}
                               </span>
                             </div>
                             <div className="flex items-start gap-2">
-                              <span className="text-gray-500">Time (Shard 2):</span>
-                              <span className="text-gray-700">
-                                {model.totalTimeHost2?.toString() || '0'} seconds
+                              <span className="text-gray-500">Hosted (Shard 2):</span>
+                              <span className="text-gray-700 text-xs">
+                                {(() => {
+                                  const now = Math.floor(Date.now() / 1000);
+                                  const startTime = Number(model.registeredAtHost2 || 0n);
+                                  if (startTime === 0) return 'Not started';
+                                  return formatHostingTime(now - startTime);
+                                })()}
                               </span>
                             </div>
                           </>
                         ) : (
                           <div className="flex items-start gap-2">
-                            <span className="text-gray-500">Your Time:</span>
-                            <span className="text-gray-700">
-                              {isHost1 
-                                ? model.totalTimeHost1?.toString() || '0' 
-                                : model.totalTimeHost2?.toString() || '0'
-                              } seconds
+                            <span className="text-gray-500">Hosting Time:</span>
+                            <span className="text-gray-700 text-xs">
+                              {(() => {
+                                const now = Math.floor(Date.now() / 1000);
+                                const startTime = isHost1 
+                                  ? Number(model.registeredAtHost1)
+                                  : Number(model.registeredAtHost2 || 0n);
+                                if (startTime === 0) return 'Not started';
+                                return formatHostingTime(now - startTime);
+                              })()}
                             </span>
                           </div>
                         )}
+                        
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Usage Count:</span>
+                          <span className="text-gray-700 text-xs font-semibold">
+                            {Number(model.usageCount)} times
+                          </span>
+                        </div>
                       </div>
 
                       {isComplete ? (
@@ -884,19 +933,19 @@ const DashboardPage = () => {
                     <div className="space-y-2 text-xs mb-4">
                       <div className="flex items-start gap-2">
                         <span className="text-gray-500">Host 1:</span>
-                        <span className="font-mono text-gray-700">{model.host1.slice(0, 10)}...</span>
+                        <span className="font-mono text-gray-700 text-xs">{model.host1.slice(0, 10)}...</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-gray-500">Available Shard:</span>
-                        <span className="text-gray-700 font-semibold">Upper Layers (51-100)</span>
+                        <span className="text-gray-700 font-semibold text-xs">Upper Layers (51-100)</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-gray-500">Existing URL:</span>
-                        <span className="font-mono text-gray-700 break-all">{model.shardUrl1?.slice(0, 40)}...</span>
+                        <span className="font-mono text-gray-700 break-all text-xs">{model.shardUrl1?.slice(0, 40)}...</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <span className="text-gray-500">Pool Balance:</span>
-                        <span className="text-gray-700 font-semibold">{model.poolBalance?.toString() || '0'} credits</span>
+                        <span className="text-gray-700 font-semibold text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[10px]">OG</span></span>
                       </div>
                     </div>
 

@@ -12,15 +12,13 @@ export const useRegisterLLM = () => {
     host2: string,
     shardUrl1: string, 
     shardUrl2: string,
-    modelName: string,
-    totalTimeHost1: number,
-    totalTimeHost2: number
+    modelName: string
   ) => {
     await writeContract({
       abi: ABI as any,
       address: CONTRACT_ADDRESS as `0x${string}`,
       functionName: 'registerLLM',
-      args: [llmId, host1, host2, shardUrl1, shardUrl2, modelName, totalTimeHost1, totalTimeHost2],
+      args: [llmId, host1, host2, shardUrl1, shardUrl2, modelName],
     });
   };
 

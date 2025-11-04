@@ -473,10 +473,6 @@ const ModelsPage = () => {
                       <span className="text-gray-500 flex-shrink-0">URL:</span>
                       <span className="font-mono text-gray-700 break-all">{llm.shardUrl1.slice(0, 60)}...</span>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500">Pool Balance:</span>
-                      <span className="text-gray-700 font-semibold">{llm.poolBalance?.toString() || '0'} credits</span>
-                    </div>
                   </div>
 
                   {isComplete ? (

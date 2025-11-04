@@ -513,7 +513,14 @@ const ChatPage = () => {
         // Compute token usage for this user message (OpenAI-style tokenizer)
         const tokenIds = encode(message);
         const tokensUsed = BigInt(tokenIds.length);
-        await usePrompt(0n, tokensUsed);
+        
+        // Use selected model ID for credit deduction, fallback to 1
+        const llmIdForCredits = selectedModelId !== null && selectedModelId !== undefined 
+          ? BigInt(selectedModelId) 
+          : 1n;
+        
+        console.log(`Deducting ${tokensUsed} tokens for LLM ID: ${llmIdForCredits} (selected: ${selectedModelId})`);
+        await usePrompt(llmIdForCredits, tokensUsed);
         // Wait until the transaction is actually confirmed on-chain before proceeding
         const waitForConfirmation = async (timeoutMs = 120000) => {
           const start = Date.now();
