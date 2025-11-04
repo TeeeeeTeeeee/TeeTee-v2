@@ -4,24 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
-import { AddModelForm } from '../components/AddModelForm';
-import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
-import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
 import { useGetIncompleteLLMs } from '../lib/contracts/creditUse/reads/useGetIncompleteLLMs';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
-import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
 import { ModelFilters } from '../components/ModelFilters';
-
-interface AddModelFormData {
-  modelName: string;
-  walletAddress: string;
-  shardSelection: string;
-  shardUrl: string;
-}
 
 interface IncompleteLLM {
   id: number;
@@ -58,30 +47,18 @@ const ModelsPage = () => {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'incomplete' | 'mymodels'>('all');
-  const [showJoinForm, setShowJoinForm] = useState(false);
-  const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
-  const [selectedModelName, setSelectedModelName] = useState<string>('');
-  const [existingShardUrl, setExistingShardUrl] = useState<string>('');
   const [allModels, setAllModels] = useState<IncompleteLLM[]>([]);
   const [isLoadingAllModels, setIsLoadingAllModels] = useState(false);
   const [incompleteLLMDetails, setIncompleteLLMDetails] = useState<IncompleteLLM[]>([]);
   const [isLoadingIncomplete, setIsLoadingIncomplete] = useState(false);
   const [myHostedModels, setMyHostedModels] = useState<IncompleteLLM[]>([]);
   const [isLoadingMyModels, setIsLoadingMyModels] = useState(false);
-  const [showClaimINFTModal, setShowClaimINFTModal] = useState(false);
-  const [registeredModelName, setRegisteredModelName] = useState<string>('');
-  const [isSecondHost, setIsSecondHost] = useState(false);
 
   // Smart contract hooks
-  const { registerLLM, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
-  const { incompleteLLMs, refetch: refetchIncomplete } = useGetIncompleteLLMs();
-  const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
+  const { incompleteLLMs } = useGetIncompleteLLMs();
+  const { totalLLMs } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
   const config = useConfig();
-  
-  // INFT hooks for minting and authorization
-  const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
-  const { authorize: authorizeINFT, isPending: isAuthorizing, isConfirmed: isAuthConfirmed } = useAuthorizeINFT();
 
   // Fetch ALL models (complete + incomplete)
   useEffect(() => {
@@ -133,7 +110,7 @@ const ModelsPage = () => {
     };
 
     fetchAllModels();
-  }, [totalLLMs, config, isConfirmed]);
+  }, [totalLLMs, config]);
 
   // Fetch incomplete LLM details
   useEffect(() => {
@@ -239,107 +216,8 @@ const ModelsPage = () => {
     };
 
     fetchMyHostedModels();
-  }, [connectedAddress, totalLLMs, config, isConfirmed]);
+  }, [connectedAddress, totalLLMs, config]);
 
-  // Reset join form
-  const resetJoinForm = () => {
-    setShowJoinForm(false);
-    setSelectedLLMId(null);
-    setSelectedModelName('');
-    setExistingShardUrl('');
-    resetWrite();
-  };
-
-  // Handle joining as second host
-  const handleJoinAsSecondHost = async (formData: AddModelFormData) => {
-    if (selectedLLMId === null || !formData.walletAddress || !formData.shardUrl) return;
-
-    if (!connectedAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-
-    try {
-      resetWrite();
-      
-      const llmDetails = allModels.find((llm: IncompleteLLM) => llm.id === selectedLLMId);
-      setRegisteredModelName(llmDetails?.modelName || 'Model');
-      
-      await registerLLM(
-        selectedLLMId,
-        '0x0000000000000000000000000000000000000000',
-        formData.walletAddress,
-        '',
-        formData.shardUrl,
-        '',
-        0,
-        0
-      );
-    } catch (error) {
-      console.error('Failed to join as second host:', error);
-    }
-  };
-
-  // Effect to handle successful join as second host
-  useEffect(() => {
-    if (isConfirmed && showJoinForm && registeredModelName) {
-      setIsSecondHost(true);
-      setShowClaimINFTModal(true);
-      resetJoinForm();
-      refetchIncomplete();
-      refetchTotal();
-    }
-  }, [isConfirmed, showJoinForm, registeredModelName]);
-  
-  // Effect to handle successful INFT mint
-  useEffect(() => {
-    const handleMintSuccess = async () => {
-      if (isMintConfirmed && connectedAddress) {
-        try {
-          const tokenId = 1;
-          await authorizeINFT(tokenId, connectedAddress);
-        } catch (error) {
-          console.error('Failed to authorize user:', error);
-        }
-      }
-    };
-    
-    handleMintSuccess();
-  }, [isMintConfirmed, connectedAddress]);
-  
-  // Effect to auto-close modal after successful authorization
-  useEffect(() => {
-    if (isAuthConfirmed) {
-      const timer = setTimeout(() => {
-        setShowClaimINFTModal(false);
-        setRegisteredModelName('');
-        setIsSecondHost(false);
-      }, 2000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthConfirmed]);
-  
-  // Handle claiming INFT from modal
-  const handleClaimINFT = async () => {
-    if (!connectedAddress) {
-      alert('Please connect your wallet first');
-      return;
-    }
-    
-    try {
-      const encryptedURI = '0g://storage/model-data-' + Date.now();
-      const metadataHash = '0x' + Array(64).fill('0').join('');
-      
-      const mintSuccess = await mintINFT(connectedAddress, encryptedURI, metadataHash);
-      
-      if (mintSuccess) {
-        console.log('INFT claim initiated...');
-      }
-    } catch (error) {
-      console.error('Failed to claim INFT:', error);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-transparent font-inter">
@@ -349,12 +227,11 @@ const ModelsPage = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-8 py-12 mt-24">
         {/* Models Section */}
-        {!showJoinForm && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-12"
+        >
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -614,13 +491,8 @@ const ModelsPage = () => {
                     </button>
                   ) : (
                     <button
-                      onClick={() => {
-                        setSelectedLLMId(llm.id);
-                        setSelectedModelName(llm.modelName);
-                        setExistingShardUrl(llm.shardUrl1 || '');
-                        setShowJoinForm(true);
-                      }}
-                      className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm"
+                      onClick={() => router.push('/console')}
+                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm"
                     >
                       Join as Host 2
                     </button>
@@ -631,225 +503,7 @@ const ModelsPage = () => {
               </div>
               );
             })()}
-          </motion.div>
-        )}
-
-        {/* Join as Second Host Form */}
-        {showJoinForm && selectedLLMId !== null && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="mb-12"
-          >
-            <div className="bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-6 mb-6">
-              <div className="flex items-center justify-between mb-2">
-                  <div className="flex-1">
-                  <h2 className="text-2xl font-bold text-gray-900">Join as Second Host</h2>
-                    <p className="text-sm text-gray-600 mt-1">
-                    Model: <strong className="text-violet-700">{selectedModelName}</strong>
-                    </p>
-                    <div className="mt-2 flex items-center gap-3 text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span className="text-gray-700">Shard 1: Taken</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                        <span className="text-gray-700 font-medium">Shard 2: Available</span>
-                      </div>
-                    </div>
-                    {existingShardUrl && (
-                      <div className="mt-2 p-2 bg-white rounded border border-violet-200">
-                        <p className="text-xs font-medium text-gray-700 mb-1">
-                          <svg className="w-3 h-3 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          First host's TEE URL (you must use a different one):
-                        </p>
-                        <code className="text-xs font-mono text-violet-700 break-all">{existingShardUrl}</code>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                  onClick={resetJoinForm}
-                  disabled={isWriting || isConfirming || isMinting || isAuthorizing}
-                  className="text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50 p-2 hover:bg-white rounded-lg"
-                  title="Cancel"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-            <AddModelForm
-              availableModels={[selectedModelName]}
-              availableShards={AVAILABLE_SHARDS}
-              connectedAddress={connectedAddress}
-              onSubmit={handleJoinAsSecondHost}
-              onCancel={resetJoinForm}
-              isWriting={isWriting}
-              isConfirming={isConfirming}
-              isMinting={isMinting}
-              isAuthorizing={isAuthorizing}
-              writeError={writeError}
-              availableShard="shard2"
-              existingShardUrl={existingShardUrl}
-            />
-          </motion.div>
-        )}
-        
-        {/* Claim INFT Modal */}
-        {showClaimINFTModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
-            >
-              {/* Header */}
-              <div className="bg-gradient-to-r from-violet-400 to-purple-300 px-6 py-4 text-white sticky top-0 z-10">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <h2 className="text-xl font-bold">Joined Successfully!</h2>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setShowClaimINFTModal(false);
-                      setRegisteredModelName('');
-                      setIsSecondHost(false);
-                    }}
-                    disabled={isMinting || isAuthorizing}
-                    className="text-white hover:text-violet-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <p className="text-violet-100 text-sm">You are now the second host for this model</p>
-              </div>
-
-              {/* Content */}
-              <div className="p-6">
-                {/* Success Message */}
-                <div className="mb-4">
-                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <svg className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <div>
-                      <h3 className="font-semibold text-green-900 mb-1">Joined as Second Host</h3>
-                      <p className="text-sm text-green-700">
-                        You have successfully joined <strong>{registeredModelName}</strong> as the second host. The model is now complete!
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* INFT Explanation */}
-                <div className="mb-4">
-                  <h3 className="text-base font-bold text-gray-900 mb-2 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    Claim Your INFT Token
-                  </h3>
-                  <p className="text-sm text-gray-700 mb-3">
-                    As a co-host, you're eligible for an <strong>Intelligent NFT (INFT)</strong> token. This token grants you:
-                  </p>
-                  <ul className="space-y-1.5 mb-3">
-                    <li className="flex items-start gap-2">
-                      <svg className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      <span className="text-sm text-gray-700"><strong>AI Inference Access</strong> - Run AI queries</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <svg className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                      <span className="text-sm text-gray-700"><strong>Verified Responses</strong> - Cryptographic proof</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <svg className="w-4 h-4 text-violet-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                      <span className="text-sm text-gray-700"><strong>Ownership Rights</strong> - Full control</span>
-                    </li>
-                  </ul>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setShowClaimINFTModal(false);
-                      setRegisteredModelName('');
-                      setIsSecondHost(false);
-                    }}
-                    disabled={isMinting || isAuthorizing}
-                    className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 font-medium text-sm"
-                  >
-                    Claim Later
-                  </button>
-                  <button
-                    onClick={handleClaimINFT}
-                    disabled={isMinting || isAuthorizing}
-                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 font-medium flex items-center justify-center gap-2 text-sm"
-                  >
-                    {isMinting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Minting...
-                      </>
-                    ) : isAuthorizing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Authorizing...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Claim My INFT
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* Success state */}
-                {isAuthConfirmed && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg"
-                  >
-                    <div className="flex items-center gap-2 text-green-800">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="font-semibold text-sm">INFT Claimed Successfully!</span>
-                    </div>
-                    <p className="text-xs text-green-700 mt-1">
-                      You can now use AI inference in Chat. Closing...
-                    </p>
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
+        </motion.div>
       </div>
     </div>
   );

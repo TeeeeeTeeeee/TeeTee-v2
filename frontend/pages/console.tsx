@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Navbar } from '../components/Navbar';
 import { AddModelForm } from '../components/AddModelForm';
+import MagicBento from '../components/MagicBento';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
-import { useAccount } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
+import { readContract } from '@wagmi/core';
+import ABI from '../utils/abi.json';
+import { CONTRACT_ADDRESS } from '../utils/address';
 import { useMintINFT, useAuthorizeINFT } from '../hooks/useINFT';
 import { useRouter } from 'next/router';
 
@@ -15,6 +19,19 @@ interface AddModelFormData {
   walletAddress: string;
   shardSelection: string;
   shardUrl: string;
+}
+
+interface HostedLLM {
+  id: number;
+  modelName: string;
+  host1: string;
+  host2?: string;
+  shardUrl1: string;
+  shardUrl2?: string;
+  poolBalance: bigint;
+  totalTimeHost1: bigint;
+  totalTimeHost2?: bigint;
+  isComplete?: boolean;
 }
 
 const AVAILABLE_MODELS = [
@@ -53,14 +70,25 @@ const GUIDE_SLIDES = [
   '/images/guide/4.png',
 ];
 
-const AVAILABLE_SHARDS = [
-  { id: 'shard-1', name: 'Shard 1', region: 'US-East', capacity: '75%' },
-  { id: 'shard-2', name: 'Shard 2', region: 'US-West', capacity: '60%' },
-  { id: 'shard-3', name: 'Shard 3', region: 'EU-Central', capacity: '45%' },
-  { id: 'shard-4', name: 'Shard 4', region: 'Asia-Pacific', capacity: '30%' },
-  { id: 'shard-5', name: 'Shard 5', region: 'US-Central', capacity: '90%' },
-  { id: 'shard-6', name: 'Shard 6', region: 'EU-West', capacity: '55%' }
-];
+const AVAILABLE_SHARDS: any[] = [];
+
+// LLM Icon mapping
+const LLM_ICONS: Record<string, string> = {
+  'TinyLlama-1.1B-Chat-v1.0': '/images/tinyllama.png',
+  'Mistral-7B-Instruct-v0.3': 'https://vectorseek.com/wp-content/uploads/2023/12/Mistral-AI-Icon-Logo-Vector.svg-.png',
+  'Qwen2.5-7B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/qwen-color.png',
+  'Phi-3-Mini-4K-Instruct': 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/25/Microsoft_icon.svg/2048px-Microsoft_icon.svg.png',
+  'Gemma-2-2B-Instruct': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/gemma-color.png',
+  'GPT-3.5-Turbo': 'https://uxwing.com/wp-content/themes/uxwing/download/brands-and-social-media/openai-icon.png',
+  'Claude-3-Haiku': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/light/anthropic.png',
+  'DeepSeek-V2-Lite': 'https://registry.npmmirror.com/@lobehub/icons-static-png/latest/files/dark/deepseek-color.png'
+};
+
+const DEFAULT_LLM_ICON = 'https://www.redpill.ai/_next/image?url=https%3A%2F%2Ft0.gstatic.com%2FfaviconV2%3Fclient%3DSOCIAL%26type%3DFAVICON%26fallback_opts%3DTYPE%2CSIZE%2CURL%26url%3Dhttps%3A%2F%2Fhuggingface.co%2F%26size%3D32&w=48&q=75';
+
+const getModelIcon = (modelName: string): string => {
+  return LLM_ICONS[modelName] || DEFAULT_LLM_ICON;
+};
 
 const DashboardPage = () => {
   const router = useRouter();
@@ -70,20 +98,183 @@ const DashboardPage = () => {
   const [isCopied, setIsCopied] = useState(false);
   const [showClaimINFTModal, setShowClaimINFTModal] = useState(false);
   const [registeredModelName, setRegisteredModelName] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'mymodels' | 'incomplete'>('dashboard');
+  const [myHostedModels, setMyHostedModels] = useState<HostedLLM[]>([]);
+  const [isLoadingMyModels, setIsLoadingMyModels] = useState(false);
+  const [incompleteModels, setIncompleteModels] = useState<HostedLLM[]>([]);
+  const [isLoadingIncomplete, setIsLoadingIncomplete] = useState(false);
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [selectedLLMId, setSelectedLLMId] = useState<number | null>(null);
+  const [selectedModelName, setSelectedModelName] = useState<string>('');
+  const [existingShardUrl, setExistingShardUrl] = useState<string>('');
+  const [isSecondHost, setIsSecondHost] = useState(false);
 
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
+  const config = useConfig();
   
   // INFT hooks for minting and authorization
   const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
   const { authorize: authorizeINFT, isPending: isAuthorizing, isConfirmed: isAuthConfirmed } = useAuthorizeINFT();
 
+  // Fetch models hosted by the current user
+  useEffect(() => {
+    const fetchMyHostedModels = async () => {
+      if (!connectedAddress || totalLLMs === undefined) {
+        setMyHostedModels([]);
+        return;
+      }
+
+      setIsLoadingMyModels(true);
+      
+      try {
+        const myModels: HostedLLM[] = [];
+        
+        for (let i = 0; i < Number(totalLLMs); i++) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [BigInt(i)]
+            }) as any;
+            
+            if (data) {
+              const host1 = (data.host1 || data[0] || '').toLowerCase();
+              const host2 = (data.host2 || data[1] || '').toLowerCase();
+              const userAddress = connectedAddress.toLowerCase();
+              
+              if (host1 === userAddress || host2 === userAddress) {
+                myModels.push({
+                  id: i,
+                  modelName: data.modelName || data[4] || 'Unknown Model',
+                  host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                  host2: data.host2 || data[1] || '0x0000000000000000000000000000000000000000',
+                  shardUrl1: data.shardUrl1 || data[2] || '',
+                  shardUrl2: data.shardUrl2 || data[3] || '',
+                  poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
+                  totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n),
+                  totalTimeHost2: data.totalTimeHost2 !== undefined ? data.totalTimeHost2 : (data[7] !== undefined ? data[7] : 0n),
+                  isComplete: data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false)
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${i}:`, error);
+          }
+        }
+        
+        setMyHostedModels(myModels);
+      } catch (error) {
+        console.error('Error fetching my hosted models:', error);
+      } finally {
+        setIsLoadingMyModels(false);
+      }
+    };
+
+    fetchMyHostedModels();
+  }, [connectedAddress, totalLLMs, config, isConfirmed]);
+
+  // Fetch incomplete models (models waiting for second host)
+  useEffect(() => {
+    const fetchIncompleteModels = async () => {
+      if (totalLLMs === undefined) {
+        setIncompleteModels([]);
+        return;
+      }
+
+      setIsLoadingIncomplete(true);
+      
+      try {
+        const incomplete: HostedLLM[] = [];
+        
+        for (let i = 0; i < Number(totalLLMs); i++) {
+          try {
+            const data = await readContract(config, {
+              address: CONTRACT_ADDRESS as `0x${string}`,
+              abi: ABI,
+              functionName: 'getHostedLLM',
+              args: [BigInt(i)]
+            }) as any;
+            
+            if (data) {
+              const host2 = data.host2 || data[1] || '0x0000000000000000000000000000000000000000';
+              const isComplete = data.isComplete !== undefined ? data.isComplete : (data[10] !== undefined ? data[10] : false);
+              
+              // Only include models that are incomplete (no second host)
+              if (!isComplete && host2 === '0x0000000000000000000000000000000000000000') {
+                incomplete.push({
+                  id: i,
+                  modelName: data.modelName || data[4] || 'Unknown Model',
+                  host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                  shardUrl1: data.shardUrl1 || data[2] || '',
+                  poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
+                  totalTimeHost1: data.totalTimeHost1 !== undefined ? data.totalTimeHost1 : (data[6] !== undefined ? data[6] : 0n),
+                  isComplete: false
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Failed to fetch LLM ${i}:`, error);
+          }
+        }
+        
+        setIncompleteModels(incomplete);
+      } catch (error) {
+        console.error('Error fetching incomplete models:', error);
+      } finally {
+        setIsLoadingIncomplete(false);
+      }
+    };
+
+    fetchIncompleteModels();
+  }, [totalLLMs, config, isConfirmed]);
+
   // Reset form state
   const resetForm = () => {
     setShowAddForm(false);
     resetWrite();
+  };
+
+  // Reset join form
+  const resetJoinForm = () => {
+    setShowJoinForm(false);
+    setSelectedLLMId(null);
+    setSelectedModelName('');
+    setExistingShardUrl('');
+    resetWrite();
+  };
+
+  // Handle joining as second host
+  const handleJoinAsSecondHost = async (formData: AddModelFormData) => {
+    if (selectedLLMId === null || !formData.walletAddress || !formData.shardUrl) return;
+
+    if (!connectedAddress) {
+      alert('Please connect your wallet first');
+      return;
+    }
+
+    try {
+      resetWrite();
+      
+      setRegisteredModelName(selectedModelName);
+      setIsSecondHost(true);
+      
+      await registerLLM(
+        selectedLLMId,
+        '0x0000000000000000000000000000000000000000',
+        formData.walletAddress,
+        '',
+        formData.shardUrl,
+        '',
+        0,
+        0
+      );
+    } catch (error) {
+      console.error('Failed to join as second host:', error);
+    }
   };
 
   // Handle form submission for registering first host
@@ -127,8 +318,12 @@ const DashboardPage = () => {
       // Show claim modal
       setShowClaimINFTModal(true);
       
-      // Reset the registration form
-      resetForm();
+      // Reset the appropriate form
+      if (showJoinForm) {
+        resetJoinForm();
+      } else {
+        resetForm();
+      }
       
       // Refetch data
       refetchTotal();
@@ -222,7 +417,19 @@ const DashboardPage = () => {
               <p className="text-gray-600 mt-1">Add and manage your model hosting configurations</p>
             </div>
             
-            {/* Info Button */}
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3">
+              {myHostedModels.length > 0 && !showAddForm && (
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="px-6 py-2 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-full hover:opacity-90 transition-opacity font-medium flex items-center gap-2 text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add New Model
+                </button>
+              )}
             <button
               onClick={() => setShowHostingGuide(true)}
               className="p-3 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800 transition-all"
@@ -233,77 +440,457 @@ const DashboardPage = () => {
               </svg>
             </button>
           </div>
+          </div>
         </div>
 
-        {/* Add Model Section */}
-        <div className="mb-12">
-          {!showAddForm ? (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-8"
-            >
-              <div className="text-center max-w-2xl mx-auto">
-                <div className="mb-4">
-                  <svg className="w-16 h-16 mx-auto text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+        {/* Tabs - Always show */}
+        {!showAddForm && !showJoinForm && (
+          <div className="mb-8 border-b border-gray-200">
+            <div className="flex gap-8">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`pb-4 px-2 font-semibold transition-all ${
+                  activeTab === 'dashboard'
+                    ? 'text-violet-600 border-b-2 border-violet-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Dashboard
+              </button>
+              <button
+                onClick={() => setActiveTab('mymodels')}
+                className={`pb-4 px-2 font-semibold transition-all ${
+                  activeTab === 'mymodels'
+                    ? 'text-violet-600 border-b-2 border-violet-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                My Models ({myHostedModels.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('incomplete')}
+                className={`pb-4 px-2 font-semibold transition-all ${
+                  activeTab === 'incomplete'
+                    ? 'text-violet-600 border-b-2 border-violet-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Incomplete Models ({incompleteModels.length})
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dashboard Content */}
+        {!showAddForm && !showJoinForm && activeTab === 'dashboard' && myHostedModels.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            {/* Magic Bento Dashboard */}
+            <div className="flex justify-center">
+              <MagicBento 
+                textAutoHide={true}
+                enableStars={true}
+                enableSpotlight={true}
+                enableBorderGlow={true}
+                enableTilt={true}
+                enableMagnetism={true}
+                clickEffect={true}
+                spotlightRadius={300}
+                particleCount={12}
+                glowColor="132, 0, 255"
+                cardData={[
+                  {
+                    color: '#FFFFFF',
+                    title: myHostedModels.length.toString(),
+                    description: 'Shard(s) currently active',
+                    label: 'Total Shards Hosted',
+                    onClick: () => setActiveTab('mymodels')
+                  },
+                  (() => {
+                    // Find most hosted model
+                    const modelCounts: { [key: string]: number } = {};
+                    myHostedModels.forEach(m => {
+                      modelCounts[m.modelName] = (modelCounts[m.modelName] || 0) + 1;
+                    });
+                    const mostHosted = Object.entries(modelCounts).sort((a, b) => b[1] - a[1])[0];
+                    const mostHostedName = mostHosted ? mostHosted[0] : 'None';
+                    
+                    return {
+                      color: '#FFFFFF',
+                      title: mostHostedName,
+                      description: 'Your most hosted model',
+                      label: 'Most Hosted Shards',
+                      icon: mostHostedName !== 'None' ? getModelIcon(mostHostedName) : undefined,
+                      modelName: mostHostedName !== 'None' ? mostHostedName : undefined,
+                      onClick: () => setActiveTab('mymodels')
+                    };
+                  })(),
+                  {
+                    color: '#FFFFFF',
+                    title: myHostedModels.filter(m => !m.isComplete).length > 0 ? '⚠️ Pending' : '✓ All Good',
+                    description: `${myHostedModels.filter(m => !m.isComplete).length} model${myHostedModels.filter(m => !m.isComplete).length !== 1 ? 's' : ''} waiting for host`,
+                    label: 'Alerts',
+                    onClick: () => setActiveTab('mymodels')
+                  },
+                  {
+                    color: '#FFFFFF',
+                    title: '0',
+                    description: 'Coming soon',
+                    label: 'People Used',
+                    onClick: () => {}
+                  },
+                  {
+                    color: '#FFFFFF',
+                    title: myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0).toString(),
+                    description: 'Total credits earned from hosting',
+                    label: 'Earnings Total',
+                    onClick: () => router.push('/chat')
+                  },
+                  {
+                    color: '#FFFFFF',
+                    title: '+',
+                    description: 'Host a new model',
+                    label: 'Add Model',
+                    onClick: () => setShowAddForm(true)
+                  }
+                ]}
+              />
+            </div>
+          </motion.div>
+        )}
+
+        {/* My Models Content */}
+        {!showAddForm && !showJoinForm && activeTab === 'mymodels' && myHostedModels.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">My Hosted Models</h2>
+            </div>
+
+            {isLoadingMyModels ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {myHostedModels.map((model) => {
+                  const isComplete = model.isComplete || (model.host2 && model.host2 !== '0x0000000000000000000000000000000000000000');
+                  const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+                  
+                  return (
+                    <motion.div
+                      key={model.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
+                          <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
+                        </div>
+                        <div className={`px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 ${
+                          isComplete 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {isComplete ? '✓ Complete' : '⏳ Pending'}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs mb-4">
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Your Role:</span>
+                          <span className="font-semibold text-violet-600">
+                            {isHost1 ? 'Host 1 (Primary)' : 'Host 2 (Secondary)'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Shard:</span>
+                          <span className="text-gray-700">
+                            {isHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Your URL:</span>
+                          <span className="font-mono text-gray-700 break-all">
+                            {isHost1 ? model.shardUrl1?.slice(0, 40) : model.shardUrl2?.slice(0, 40)}...
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Pool Balance:</span>
+                          <span className="text-gray-700 font-semibold">{model.poolBalance?.toString() || '0'} credits</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Your Time:</span>
+                          <span className="text-gray-700">
+                            {isHost1 
+                              ? model.totalTimeHost1?.toString() || '0' 
+                              : model.totalTimeHost2?.toString() || '0'
+                            } seconds
+                          </span>
+                        </div>
+                      </div>
+
+                      {isComplete ? (
+                        <button
+                          onClick={() => router.push('/chat')}
+                          className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                          </svg>
+                          Use in Chat
+                        </button>
+                      ) : isHost1 ? (
+                        <button
+                          onClick={() => {
+                            setSelectedLLMId(model.id);
+                            setSelectedModelName(model.modelName);
+                            setExistingShardUrl(model.shardUrl1 || '');
+                            setShowJoinForm(true);
+                          }}
+                          className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Complete My Model
+                        </button>
+                      ) : null}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* My Models Empty State */}
+        {!showAddForm && !showJoinForm && activeTab === 'mymodels' && myHostedModels.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-8"
+          >
+            <div className="text-center max-w-2xl mx-auto">
+              <div className="mb-4">
+                <svg className="w-16 h-16 mx-auto text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready to Host a Model?</h2>
+              <p className="text-gray-600 mb-6">
+                Start hosting an AI model on the TeeTee network and earn rewards. Follow our step-by-step guide to configure your TEE environment.
+              </p>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="px-8 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-full hover:opacity-90 transition-opacity font-medium flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready to Host a Model?</h2>
-                <p className="text-gray-600 mb-6">
-                  Start hosting an AI model on the TeeTee network and earn rewards. Follow our step-by-step guide to configure your TEE environment.
-                </p>
-                <div className="flex items-center justify-center gap-4">
+                  Add Model
+                </button>
+                <button
+                  onClick={() => setShowHostingGuide(true)}
+                  className="px-8 py-3 bg-white text-gray-700 rounded-full hover:bg-gray-50 transition-colors font-medium border-2 border-gray-200"
+                >
+                  View Guide
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Dashboard Empty State */}
+        {!showAddForm && !showJoinForm && activeTab === 'dashboard' && myHostedModels.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl border-2 border-violet-300 p-8"
+          >
+            <div className="text-center max-w-2xl mx-auto">
+              <div className="mb-4">
+                <svg className="w-16 h-16 mx-auto text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Ready to Host a Model?</h2>
+              <p className="text-gray-600 mb-6">
+                Start hosting an AI model on the TeeTee network and earn rewards. Follow our step-by-step guide to configure your TEE environment.
+              </p>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setShowAddForm(true)}
+                  className="px-8 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-full hover:opacity-90 transition-opacity font-medium flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Model
+                </button>
+                <button
+                  onClick={() => setShowHostingGuide(true)}
+                  className="px-8 py-3 bg-white text-gray-700 rounded-full hover:bg-gray-50 transition-colors font-medium border-2 border-gray-200"
+                >
+                  View Guide
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Incomplete Models Content */}
+        {!showAddForm && !showJoinForm && activeTab === 'incomplete' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Incomplete Models</h2>
+              <p className="text-gray-600 mt-1">Join as a second host to complete these models and earn rewards</p>
+            </div>
+
+            {isLoadingIncomplete ? (
+              <div className="flex items-center justify-center py-10">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
+              </div>
+            ) : incompleteModels.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="text-center max-w-md">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">No Incomplete Models</h3>
+                  <p className="text-gray-600 mb-6">
+                    There are currently no models waiting for a second host. Check back later or add your own model!
+                  </p>
                   <button
                     onClick={() => setShowAddForm(true)}
-                    className="px-8 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-full hover:opacity-90 transition-opacity font-medium flex items-center gap-2"
+                    className="px-6 py-3 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium inline-flex items-center gap-2"
                   >
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    Add Model
+                    Add Your Model
                   </button>
-                  <button
-                    onClick={() => setShowHostingGuide(true)}
-                    className="px-8 py-3 bg-white text-gray-700 rounded-full hover:bg-gray-50 transition-colors font-medium border-2 border-gray-200"
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {incompleteModels.map((model) => (
+                  <motion.div
+                    key={model.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
                   >
-                    View Guide
-                  </button>
-                </div>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
+                        <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
+                      </div>
+                      <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-yellow-100 text-yellow-700">
+                        ⏳ Needs Host 2
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-xs mb-4">
+                      <div className="flex items-start gap-2">
+                        <span className="text-gray-500">Host 1:</span>
+                        <span className="font-mono text-gray-700">{model.host1.slice(0, 10)}...</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-gray-500">Available Shard:</span>
+                        <span className="text-gray-700 font-semibold">Upper Layers (51-100)</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-gray-500">Existing URL:</span>
+                        <span className="font-mono text-gray-700 break-all">{model.shardUrl1?.slice(0, 40)}...</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-gray-500">Pool Balance:</span>
+                        <span className="text-gray-700 font-semibold">{model.poolBalance?.toString() || '0'} credits</span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedLLMId(model.id);
+                        setSelectedModelName(model.modelName);
+                        setExistingShardUrl(model.shardUrl1 || '');
+                        setShowJoinForm(true);
+                      }}
+                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Join as Host 2
+                    </button>
+                  </motion.div>
+                ))}
               </div>
-            </motion.div>
-          ) : (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Add New Model</h2>
-                  <p className="text-gray-600 mt-1">Configure your model hosting setup</p>
-                </div>
-                <button
-                  onClick={resetForm}
-                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Cancel"
-                >
-                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+            )}
+          </motion.div>
+        )}
+
+        {/* Join as Second Host Form */}
+        {showJoinForm && selectedLLMId !== null && (
+          <AddModelForm
+            availableModels={[selectedModelName]}
+            availableShards={AVAILABLE_SHARDS}
+            connectedAddress={connectedAddress}
+            onSubmit={handleJoinAsSecondHost}
+            onCancel={resetJoinForm}
+            isWriting={isWriting}
+            isConfirming={isConfirming}
+            isMinting={isMinting}
+            isAuthorizing={isAuthorizing}
+            writeError={writeError}
+            availableShard="shard2"
+            existingShardUrl={existingShardUrl}
+          />
+        )}
+
+        {/* Add Model Form */}
+        {showAddForm && !isLoadingMyModels && !showJoinForm && (
+          <div className="mb-12">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Add New Model</h2>
+                <p className="text-gray-600 mt-1">Configure your model hosting setup</p>
               </div>
-              <AddModelForm
-                availableModels={AVAILABLE_MODELS}
-                availableShards={AVAILABLE_SHARDS}
-                connectedAddress={connectedAddress}
-                onSubmit={handleAddModel}
-                onCancel={resetForm}
-                isWriting={isWriting}
-                isConfirming={isConfirming}
-                isMinting={isMinting}
-                isAuthorizing={isAuthorizing}
-                writeError={writeError}
-              />
+              <button
+                onClick={resetForm}
+                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                title="Cancel"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
-          )}
-        </div>
+            <AddModelForm
+              availableModels={AVAILABLE_MODELS}
+              availableShards={AVAILABLE_SHARDS}
+              connectedAddress={connectedAddress}
+              onSubmit={handleAddModel}
+              onCancel={resetForm}
+              isWriting={isWriting}
+              isConfirming={isConfirming}
+              isMinting={isMinting}
+              isAuthorizing={isAuthorizing}
+              writeError={writeError}
+            />
+          </div>
+        )}
 
         {/* Hosting Guide Modal */}
         {showHostingGuide && (
@@ -478,12 +1065,13 @@ const DashboardPage = () => {
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <h2 className="text-xl font-bold">Registration Successful!</h2>
+                    <h2 className="text-xl font-bold">{isSecondHost ? 'Joined Successfully!' : 'Registration Successful!'}</h2>
                   </div>
                   <button
                     onClick={() => {
                       setShowClaimINFTModal(false);
                       setRegisteredModelName('');
+                      setIsSecondHost(false);
                     }}
                     disabled={isMinting || isAuthorizing}
                     className="text-white hover:text-violet-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -493,7 +1081,9 @@ const DashboardPage = () => {
                     </svg>
                   </button>
                 </div>
-                <p className="text-violet-100 text-sm">Your model is now registered on the network</p>
+                <p className="text-violet-100 text-sm">
+                  {isSecondHost ? 'You are now the second host for this model' : 'Your model is now registered on the network'}
+                </p>
               </div>
 
               {/* Content */}
@@ -505,9 +1095,13 @@ const DashboardPage = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <div>
-                      <h3 className="font-semibold text-green-900 mb-1">Model Registered</h3>
+                      <h3 className="font-semibold text-green-900 mb-1">{isSecondHost ? 'Joined as Second Host' : 'Model Registered'}</h3>
                       <p className="text-sm text-green-700">
-                        <strong>{registeredModelName}</strong> has been successfully registered as a hosting slot.
+                        {isSecondHost ? (
+                          <>You have successfully joined <strong>{registeredModelName}</strong> as the second host. The model is now complete!</>
+                        ) : (
+                          <><strong>{registeredModelName}</strong> has been successfully registered as a hosting slot.</>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -522,7 +1116,7 @@ const DashboardPage = () => {
                     Claim Your INFT Token
                   </h3>
                   <p className="text-sm text-gray-700 mb-3">
-                    As a model hoster, you're eligible for an <strong>Intelligent NFT (INFT)</strong> token. This token grants you:
+                    As a {isSecondHost ? 'co-host' : 'model hoster'}, you're eligible for an <strong>Intelligent NFT (INFT)</strong> token. This token grants you:
                   </p>
                   <ul className="space-y-1.5 mb-3">
                     <li className="flex items-start gap-2">
