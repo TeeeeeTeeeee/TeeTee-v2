@@ -16,6 +16,7 @@ export const Navbar = ({ hideLogo = false, hasSidebar = false }: NavbarProps) =>
     { name: 'Chat', url: '/chat', icon: MessageSquare },
     { name: 'Models', url: '/models', icon: Box },
     { name: 'Console', url: '/console', icon: LayoutDashboard },
+    { name: 'FAQ', url: '/faq', icon: HelpCircle },
   ];
 
   useEffect(() => {
