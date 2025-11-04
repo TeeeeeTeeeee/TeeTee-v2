@@ -17,15 +17,9 @@ import {
   useUsePrompt,
 } from '@/lib/contracts/creditUse';
 import { useGetTotalLLMs } from '@/lib/contracts/creditUse/reads/useGetTotalLLMs';
-import { useUserSessionCount } from '@/lib/contracts/creditUse/reads/useChatReads';
-import { 
-  useCreateChatSession, 
-  useStoreMessageExchange
-} from '@/lib/contracts/creditUse/writes/useChatFunctions';
 import { useInference } from '../hooks/useInference';
 import { useCheckINFTAuthorization } from '../hooks/useINFT';
 import { Navbar } from '@/components/Navbar';
-import { encryptMessage } from '@/lib/encryption';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
 
@@ -95,12 +89,6 @@ const ChatPage = () => {
   const { data: bundlePrice } = useCheckBundlePrice();
   const { buyCredits, isWriting: isBuying, isConfirmed: isBuyConfirmed, resetWrite: resetBuy } = useBuyCredits();
   const { usePrompt, isWriting: isUsingPrompt, resetWrite: resetUsePrompt, isConfirming, isConfirmed } = useUsePrompt();
-  
-  // Blockchain chat storage hooks
-  const { sessionCount, refetch: refetchSessionCount } = useUserSessionCount(address);
-  const { createSession, isConfirmed: isCreateConfirmed } = useCreateChatSession();
-  const { storeMessages, isWriting: isStoringOnChain, isConfirmed: isStoreConfirmed } = useStoreMessageExchange();
-  const [blockchainSessionId, setBlockchainSessionId] = useState<number | null>(null);
   
   // INFT inference hook
   const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
@@ -285,7 +273,7 @@ const ChatPage = () => {
     }
   }, [isConnected, address]);
 
-  // Auto-save to BOTH 0G storage AND blockchain after each message exchange
+  // Auto-save to local JSON and MongoDB after each message exchange
   const autoSaveToStorage = async (messagesToSave: Message[]) => {
     if (!isConnected || !address || messagesToSave.length === 0) return;
     
@@ -298,7 +286,7 @@ const ChatPage = () => {
         timestamp: m.timestamp instanceof Date ? m.timestamp.getTime() : new Date(m.timestamp).getTime(),
       }));
 
-      // 1. Save to local 0G Storage (existing functionality)
+      // Save to local JSON and MongoDB through the API
       const res = await fetch('/api/chat-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -321,42 +309,6 @@ const ChatPage = () => {
       }
       
       await fetchChatSessions();
-
-      // 2. Also save to blockchain (encrypted)
-      try {
-        // Get last user message and last AI message
-        const lastTwoMessages = messagesToSave.slice(-2);
-        if (lastTwoMessages.length === 2) {
-          const userMsg = lastTwoMessages[0];
-          const aiMsg = lastTwoMessages[1];
-          
-          // Encrypt messages with wallet address
-          const encryptedUser = encryptMessage(userMsg.text, address);
-          const encryptedAI = encryptMessage(aiMsg.text, address);
-          
-          // Create or get blockchain session
-          if (blockchainSessionId === null) {
-            await createSession();
-            // Wait for session creation
-            const newCount = await refetchSessionCount();
-            const newSessionId = Number(newCount?.data || 0) - 1;
-            setBlockchainSessionId(newSessionId);
-            
-            // Store after session is created
-            setTimeout(async () => {
-              await storeMessages(BigInt(newSessionId), encryptedUser, encryptedAI);
-              console.log('Saved to blockchain session:', newSessionId);
-            }, 2000);
-          } else {
-            // Use existing session
-            await storeMessages(BigInt(blockchainSessionId), encryptedUser, encryptedAI);
-            console.log('Saved to blockchain session:', blockchainSessionId);
-          }
-        }
-      } catch (blockchainError) {
-        console.error('Blockchain save error (non-critical):', blockchainError);
-        // Don't fail the whole save if blockchain save fails
-      }
       
     } catch (err: any) {
       console.error('Auto-save error:', err);
@@ -427,7 +379,6 @@ const ChatPage = () => {
 
     setMessages([]);
     setActiveConversation(null);
-    setBlockchainSessionId(null); // Reset blockchain session
     setChatFilename(`chat_${Date.now()}.txt`);
   };
 
@@ -551,13 +502,11 @@ const ChatPage = () => {
     // After signing/submitting the tx, call INFT inference
     setIsGenerating(true);
     try {
-      // Check if a model is selected
-      if (selectedModelId === null) {
-        throw new Error('Please select a model first');
-      }
+      // Use token ID 1 by default for testing (can be changed to selectedModelId later)
+      const tokenId = 1;
       
-      // Use INFT inference with the selected model ID
-      const inferenceResult = await runINFTInference(selectedModelId, message, address);
+      // Use INFT inference with token ID 1
+      const inferenceResult = await runINFTInference(tokenId, message, address);
       
       const text = inferenceResult?.output || 'No response from INFT';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
@@ -880,9 +829,8 @@ const ChatPage = () => {
                   <button 
                     onClick={handleSendMessage}
                     className="flex-shrink-0 p-1 text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
-                    disabled={isUsingPrompt || isGenerating || isINFTInferring || selectedModelId === null || !message.trim()}
+                    disabled={isUsingPrompt || isGenerating || isINFTInferring || !message.trim()}
                     title={
-                      selectedModelId === null ? 'Please select a model first' :
                       isUsingPrompt ? 'Waiting for transaction…' : 
                       isINFTInferring || isGenerating ? 'INFT is processing...' : 
                       'Send'
@@ -901,24 +849,24 @@ const ChatPage = () => {
                   </button>
                 </div>
 
-                {/* Auto-save indicator */}
-                {(isSavingToStorage || isStoringOnChain) && (
-                  <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
-                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Saving to 0G Storage & Blockchain...</span>
-                  </div>
-                )}
-                {!isSavingToStorage && !isStoringOnChain && messages.length > 0 && isConnected && (
-                  <div className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    <span>Auto-saved to 0G Storage & Blockchain</span>
-                  </div>
-                )}
+                 {/* Auto-save indicator */}
+                 {isSavingToStorage && (
+                   <div className="mt-2 flex items-center justify-center gap-2 text-xs text-gray-500">
+                     <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                     </svg>
+                     <span>Saving to local storage & MongoDB...</span>
+                   </div>
+                 )}
+                 {!isSavingToStorage && messages.length > 0 && isConnected && (
+                   <div className="mt-2 flex items-center justify-center gap-1 text-xs text-gray-400">
+                     <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                     </svg>
+                     <span>Auto-saved to local storage & MongoDB</span>
+                   </div>
+                 )}
               </div>
             </div>
           </div>

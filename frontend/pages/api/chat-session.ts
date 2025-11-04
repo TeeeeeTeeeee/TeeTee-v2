@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { Readable } from 'node:stream';
 import { uploadStream } from '../../utils/storage';
 import { addSession, updateSession } from '../../utils/json-storage';
+import { connectToDatabase } from '../../utils/mongodb';
 
 // Types expected from the client
 type ChatMessage = {
@@ -110,6 +111,47 @@ export default async function handler(
     } catch (storageError: any) {
       console.error('JSON storage save error:', storageError);
       // Continue even if local storage fails - the file is still uploaded to 0G
+    }
+
+    // Also save to MongoDB
+    try {
+      const { db } = await connectToDatabase();
+      const chatSessionsCollection = db.collection('chatSessions');
+      
+      if (sessionId) {
+        // Update existing session in MongoDB
+        await chatSessionsCollection.updateOne(
+          { _id: sessionId },
+          {
+            $set: {
+              rootHash: rootHash || null,
+              txHash,
+              messageCount: messages.length,
+              filename: fname,
+              preview,
+              updatedAt: new Date().toISOString(),
+            }
+          }
+        );
+        console.log(`Updated MongoDB session ${sessionId}`);
+      } else {
+        // Insert new session into MongoDB
+        await chatSessionsCollection.insertOne({
+          _id: returnedSessionId,
+          walletAddress: walletAddress.toLowerCase(),
+          filename: fname,
+          rootHash: rootHash || null,
+          txHash,
+          messageCount: messages.length,
+          preview,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        console.log(`Created MongoDB session ${returnedSessionId}`);
+      }
+    } catch (mongoError: any) {
+      console.error('MongoDB save error:', mongoError);
+      // Continue even if MongoDB save fails - the file is still uploaded and saved locally
     }
 
     return res.status(200).json({ 
