@@ -33,6 +33,16 @@ export const INFT_ABI = [
       {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
       {"internalType": "address", "name": "user", "type": "address"}
     ],
+    "name": "ownerAuthorizeUsage",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {"internalType": "uint256", "name": "tokenId", "type": "uint256"},
+      {"internalType": "address", "name": "user", "type": "address"}
+    ],
     "name": "revokeUsage",
     "outputs": [],
     "stateMutability": "nonpayable",

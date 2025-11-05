@@ -7,11 +7,13 @@ import { AddModelForm } from '../components/AddModelForm';
 import MagicBento from '../components/MagicBento';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
+import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
+import { useWithdrawAll } from '../lib/contracts/creditUse/writes/useWithdrawAll';
 import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
-import { useMintINFT, INFT_ABI, CONTRACT_ADDRESSES as INFT_ADDRESSES } from '../hooks/useINFT';
+// INFT minting and authorization is now handled by backend
 import { useRouter } from 'next/router';
 
 interface AddModelFormData {
@@ -126,22 +128,47 @@ const DashboardPage = () => {
   const [existingShardUrl, setExistingShardUrl] = useState<string>('');
   const [isSecondHost, setIsSecondHost] = useState(false);
 
+  // Stop LLM modal state
+  const [showStopModal, setShowStopModal] = useState(false);
+  const [stopModelId, setStopModelId] = useState<number | null>(null);
+  const [stopModelName, setStopModelName] = useState<string>('');
+  const [stopHostNumber, setStopHostNumber] = useState<number | null>(null);
+  const [isBothHostsForStop, setIsBothHostsForStop] = useState(false);
+
+  // Withdraw earnings modal state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [totalEarnings, setTotalEarnings] = useState<string>('0');
+
+  // Real-time ticker for hosting time
+  const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
+
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
   const config = useConfig();
   
-  // INFT hooks for minting
-  const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
+  // Stop and Withdraw hooks
+  const { stopLLM, isWriting: isStopping, isConfirming: isStopConfirming, isConfirmed: isStopConfirmed, resetWrite: resetStopWrite } = useStopLLM();
+  const { withdrawAll, isWriting: isWithdrawWriting, isConfirming: isWithdrawConfirming, isConfirmed: isWithdrawConfirmed, resetWrite: resetWithdrawWrite } = useWithdrawAll();
   
-  // Backend authorization state
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
-  const [isAuthConfirmed, setIsAuthConfirmed] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Backend mint & authorization state
+  const [isMintingAndAuthorizing, setIsMintingAndAuthorizing] = useState(false);
+  const [isMintAuthConfirmed, setIsMintAuthConfirmed] = useState(false);
+  const [mintAuthError, setMintAuthError] = useState<string | null>(null);
+  const [mintedTokenId, setMintedTokenId] = useState<number | null>(null);
   
   // Track if the claiming process has started (after user clicks button)
   const [hasStartedClaiming, setHasStartedClaiming] = useState(false);
+
+  // Real-time ticker - updates every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch models hosted by the current user
   useEffect(() => {
@@ -200,7 +227,7 @@ const DashboardPage = () => {
     };
 
     fetchMyHostedModels();
-  }, [connectedAddress, totalLLMs, config, isConfirmed]);
+  }, [connectedAddress, totalLLMs, config, isConfirmed, isStopConfirmed]);
 
   // Fetch incomplete models (models waiting for second host)
   useEffect(() => {
@@ -225,19 +252,23 @@ const DashboardPage = () => {
             }) as any;
             
             if (data) {
+              const host1 = data.host1 || data[0] || '0x0000000000000000000000000000000000000000';
               const host2 = data.host2 || data[1] || '0x0000000000000000000000000000000000000000';
               const isComplete = data.isComplete !== undefined ? data.isComplete : (data[11] !== undefined ? data[11] : false);
               
-              // Only include models that are incomplete (no second host)
-              if (!isComplete && host2 === '0x0000000000000000000000000000000000000000') {
+              // Only include models that are incomplete (missing either host1 or host2)
+              // Trust the contract's isComplete flag
+              if (!isComplete) {
                 incomplete.push({
                   id: i,
                   modelName: data.modelName || data[4] || 'Unknown Model',
-                  host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                  host1: host1,
+                  host2: host2,
                   shardUrl1: data.shardUrl1 || data[2] || '',
+                  shardUrl2: data.shardUrl2 || data[3] || '',
                   poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
                   registeredAtHost1: data.registeredAtHost1 !== undefined ? data.registeredAtHost1 : (data[6] !== undefined ? data[6] : 0n),
-                  registeredAtHost2: 0n,
+                  registeredAtHost2: data.registeredAtHost2 !== undefined ? data.registeredAtHost2 : (data[7] !== undefined ? data[7] : 0n),
                   usageCount: data.usageCount !== undefined ? data.usageCount : (data[10] !== undefined ? data[10] : 0n),
                   isComplete: false
                 });
@@ -257,7 +288,7 @@ const DashboardPage = () => {
     };
 
     fetchIncompleteModels();
-  }, [totalLLMs, config, isConfirmed]);
+  }, [totalLLMs, config, isConfirmed, isStopConfirmed]);
 
   // Reset form state
   const resetForm = () => {
@@ -340,9 +371,10 @@ const DashboardPage = () => {
       
       // Reset claiming state
       setHasStartedClaiming(false);
-      setIsAuthConfirmed(false);
-      setIsAuthorizing(false);
-      setAuthError(null);
+      setIsMintAuthConfirmed(false);
+      setIsMintingAndAuthorizing(false);
+      setMintAuthError(null);
+      setMintedTokenId(null);
       
       // Show claim modal
       setShowClaimINFTModal(true);
@@ -359,70 +391,7 @@ const DashboardPage = () => {
     }
   }, [isConfirmed, connectedAddress, registeredModelName]);
   
-  // Effect to handle successful INFT mint - then auto-authorize via backend
-  React.useEffect(() => {
-    const handleMintSuccess = async () => {
-      if (isMintConfirmed && connectedAddress) {
-        console.log('INFT minted, auto-authorizing user via backend...');
-        
-        setIsAuthorizing(true);
-        setAuthError(null);
-        
-        try {
-          // Get the current token ID counter from the contract
-          // Note: getCurrentTokenId() returns the NEXT token to be minted, so we subtract 1
-          const nextTokenId = await readContract(config, {
-            address: INFT_ADDRESSES.INFT as `0x${string}`,
-            abi: INFT_ABI,
-            functionName: 'getCurrentTokenId',
-            args: []
-          }) as bigint;
-          
-          const tokenId = Number(nextTokenId) - 1; // Subtract 1 to get the just-minted token
-          console.log('Minted INFT tokenId:', tokenId);
-          
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-          
-          const response = await fetch(`${backendUrl}/authorize-inft`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              tokenId,
-              userAddress: connectedAddress
-            })
-          });
-          
-          const data = await response.json();
-          
-          if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Authorization failed');
-          }
-          
-          console.log('Authorization successful:', data.txHash);
-          setIsAuthConfirmed(true);
-          setIsAuthorizing(false);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Failed to authorize user:', errorMessage);
-          setAuthError(errorMessage);
-          setIsAuthorizing(false);
-        }
-      }
-    };
-    
-    handleMintSuccess();
-  }, [isMintConfirmed, connectedAddress, config]);
-  
-  // Effect to log successful authorization (no auto-close, user must click Close button)
-  React.useEffect(() => {
-    if (isAuthConfirmed) {
-      console.log('✅ Authorization confirmed! User can now close the modal.');
-    }
-  }, [isAuthConfirmed]);
-  
-  // Handle claiming INFT from modal
+  // Handle claiming INFT from modal - calls backend to mint then authorize in 2 steps
   const handleClaimINFT = async () => {
     if (!connectedAddress) {
       alert('Please connect your wallet first');
@@ -431,19 +400,97 @@ const DashboardPage = () => {
     
     // Mark that the claiming process has started
     setHasStartedClaiming(true);
+    setIsMintingAndAuthorizing(true);
+    setMintAuthError(null);
+    
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
     
     try {
+      // Step 1: Mint the INFT
+      console.log('Step 1: Minting INFT...');
+      
+      // Generate a proper metadata hash (not all zeros)
       const encryptedURI = '0g://storage/model-data-' + Date.now();
-      const metadataHash = '0x' + Array(64).fill('0').join('');
+      const hashInput = `${connectedAddress}-${encryptedURI}-${Date.now()}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(hashInput);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const metadataHash = '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       
-      const mintSuccess = await mintINFT(connectedAddress, encryptedURI, metadataHash);
+      const mintBody = {
+        userAddress: connectedAddress,
+        encryptedURI: encryptedURI,
+        metadataHash: metadataHash
+      };
       
-      if (mintSuccess) {
-        console.log('INFT claim initiated...');
+      const mintResponse = await fetch(`${backendUrl}/mint-inft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mintBody)
+      });
+      
+      const mintData = await mintResponse.json();
+      
+      if (!mintResponse.ok || !mintData.success) {
+        throw new Error(mintData.error || 'Mint failed');
       }
+      
+      console.log('✅ INFT minted!', mintData);
+      console.log('   Token ID:', mintData.tokenId);
+      console.log('   Mint Tx:', mintData.txHash);
+      
+      const tokenId = mintData.tokenId;
+      
+      // Safety check: Token IDs must be >= 1
+      if (!tokenId || tokenId < 1) {
+        console.error('Invalid token ID received from mint:', tokenId);
+        throw new Error(`Invalid token ID received: ${tokenId}. Expected >= 1`);
+      }
+      
+      setMintedTokenId(tokenId);
+      
+      // Wait for the transaction to settle on the blockchain
+      console.log('Waiting 5 seconds before authorization...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Step 2: Authorize the user
+      console.log('Step 2: Authorizing user...');
+      
+      const authBody = {
+        tokenId: tokenId,
+        userAddress: connectedAddress
+      };
+          
+      const authResponse = await fetch(`${backendUrl}/authorize-inft`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+        body: JSON.stringify(authBody)
+      });
+      
+      const authData = await authResponse.json();
+      
+      if (!authResponse.ok || !authData.success) {
+        throw new Error(authData.error || 'Authorization failed');
+      }
+      
+      console.log('✅ User authorized!', authData);
+      console.log('   Auth Tx:', authData.txHash);
+      
+      // Success - both operations completed
+      setIsMintAuthConfirmed(true);
+      setIsMintingAndAuthorizing(false);
+      
     } catch (error) {
-      console.error('Failed to claim INFT:', error);
-      setHasStartedClaiming(false); // Reset on error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to mint/authorize INFT:', errorMessage);
+      setMintAuthError(errorMessage);
+      setIsMintingAndAuthorizing(false);
+      setHasStartedClaiming(false); // Reset so user can try again
     }
   };
 
@@ -466,6 +513,92 @@ const DashboardPage = () => {
   const handlePrevSlide = () => {
     setCurrentSlide((prev) => (prev - 1 + GUIDE_SLIDES.length) % GUIDE_SLIDES.length);
   };
+
+  // Handle stop LLM button click
+  const handleStopLLMClick = (model: HostedLLM) => {
+    const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+    const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+    const isBothHosts = isHost1 && isHost2;
+    
+    setStopModelId(model.id);
+    setStopModelName(model.modelName);
+    setIsBothHostsForStop(isBothHosts);
+    
+    // If user only hosts one shard, auto-select which one
+    if (!isBothHosts) {
+      setStopHostNumber(isHost1 ? 1 : 2);
+    } else {
+      setStopHostNumber(null); // User needs to choose
+    }
+    
+    setShowStopModal(true);
+  };
+
+  // Handle stop LLM confirmation
+  const handleStopLLMConfirm = async () => {
+    if (stopModelId === null || stopHostNumber === null) return;
+    
+    try {
+      await stopLLM(stopModelId, stopHostNumber);
+    } catch (error) {
+      console.error('Failed to stop LLM:', error);
+    }
+  };
+
+  // Effect to handle successful stop
+  React.useEffect(() => {
+    if (isStopConfirmed) {
+      console.log('Successfully stopped hosting LLM');
+      setShowStopModal(false);
+      setStopModelId(null);
+      setStopModelName('');
+      setStopHostNumber(null);
+      setIsBothHostsForStop(false);
+      resetStopWrite();
+      refetchTotal();
+    }
+  }, [isStopConfirmed]);
+
+  // Handle withdraw all earnings - open modal
+  const handleWithdrawAllClick = () => {
+    if (!connectedAddress || myHostedModels.length === 0) return;
+    
+    // Calculate total earnings
+    const totalWei = myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0);
+    const totalOG = totalWei / 1e15;
+    const formattedEarnings = totalOG.toFixed(3);
+    
+    // Only open modal if earnings > 0
+    if (totalOG > 0) {
+      setTotalEarnings(formattedEarnings);
+      setShowWithdrawModal(true);
+    }
+    // If earnings are 0, do nothing
+  };
+
+  // Handle the actual withdrawal transaction
+  const handleWithdrawConfirm = async () => {
+    if (!connectedAddress || myHostedModels.length === 0 || isWithdrawWriting) return;
+    
+    try {
+      // Withdraw from ALL models in one transaction
+      await withdrawAll();
+    } catch (error) {
+      console.error('Withdrawal error:', error);
+    }
+  };
+  
+  // Auto-refetch data when withdrawal is confirmed and close modal
+  useEffect(() => {
+    if (isWithdrawConfirmed) {
+      refetchTotal();
+      // Close the modal after successful withdrawal
+      setTimeout(() => {
+        setShowWithdrawModal(false);
+        resetWithdrawWrite();
+      }, 2000); // Show success state for 2 seconds before closing
+    }
+  }, [isWithdrawConfirmed, refetchTotal]);
 
   return (
     <div className="min-h-screen bg-transparent font-inter">
@@ -604,9 +737,8 @@ const DashboardPage = () => {
                     color: '#FFFFFF',
                     title: (() => {
                       const totalTime = myHostedModels.reduce((sum, m) => {
-                        const now = Math.floor(Date.now() / 1000);
-                        const time1 = Number(m.registeredAtHost1) > 0 ? now - Number(m.registeredAtHost1) : 0;
-                        const time2 = Number(m.registeredAtHost2 || 0n) > 0 ? now - Number(m.registeredAtHost2 || 0n) : 0;
+                        const time1 = Number(m.registeredAtHost1) > 0 ? currentTime - Number(m.registeredAtHost1) : 0;
+                        const time2 = Number(m.registeredAtHost2 || 0n) > 0 ? currentTime - Number(m.registeredAtHost2 || 0n) : 0;
                         return sum + time1 + time2;
                       }, 0);
                       return formatHostingTime(totalTime);
@@ -631,7 +763,7 @@ const DashboardPage = () => {
                     })(),
                     description: 'Total earned from hosting',
                     label: 'Earnings Total',
-                    onClick: () => router.push('/chat')
+                    onClick: () => handleWithdrawAllClick()
                   },
                   {
                     color: '#FFFFFF',
@@ -661,13 +793,14 @@ const DashboardPage = () => {
               <div className="flex items-center justify-center py-10">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myHostedModels.map((model) => {
-                  const isComplete = model.isComplete || (model.host2 && model.host2 !== '0x0000000000000000000000000000000000000000');
-                  const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
-                  const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
-                  const isBothHosts = isHost1 && isHost2;
+             ) : (
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {myHostedModels.map((model) => {
+                   // Trust the contract's isComplete value - it's updated correctly when stopping
+                   const isComplete = model.isComplete;
+                   const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+                   const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+                   const isBothHosts = isHost1 && isHost2;
                   
                   return (
                     <motion.div
@@ -744,10 +877,9 @@ const DashboardPage = () => {
                               <span className="text-gray-500">Hosted (Shard 1):</span>
                               <span className="text-gray-700 text-xs">
                                 {(() => {
-                                  const now = Math.floor(Date.now() / 1000);
                                   const startTime = Number(model.registeredAtHost1);
                                   if (startTime === 0) return 'Not started';
-                                  return formatHostingTime(now - startTime);
+                                  return formatHostingTime(currentTime - startTime);
                                 })()}
                               </span>
                             </div>
@@ -755,10 +887,9 @@ const DashboardPage = () => {
                               <span className="text-gray-500">Hosted (Shard 2):</span>
                               <span className="text-gray-700 text-xs">
                                 {(() => {
-                                  const now = Math.floor(Date.now() / 1000);
                                   const startTime = Number(model.registeredAtHost2 || 0n);
                                   if (startTime === 0) return 'Not started';
-                                  return formatHostingTime(now - startTime);
+                                  return formatHostingTime(currentTime - startTime);
                                 })()}
                               </span>
                             </div>
@@ -768,12 +899,11 @@ const DashboardPage = () => {
                             <span className="text-gray-500">Hosting Time:</span>
                             <span className="text-gray-700 text-xs">
                               {(() => {
-                                const now = Math.floor(Date.now() / 1000);
                                 const startTime = isHost1 
                                   ? Number(model.registeredAtHost1)
                                   : Number(model.registeredAtHost2 || 0n);
                                 if (startTime === 0) return 'Not started';
-                                return formatHostingTime(now - startTime);
+                                return formatHostingTime(currentTime - startTime);
                               })()}
                             </span>
                           </div>
@@ -784,36 +914,49 @@ const DashboardPage = () => {
                           <span className="text-gray-700 text-xs font-semibold">
                             {Number(model.usageCount)} times
                           </span>
-                        </div>
-                      </div>
+                       </div>
+                     </div>
 
-                      {isComplete ? (
-                        <button
-                          onClick={() => router.push(`/chat?modelId=${model.id}`)}
-                          className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          Use in Chat
-                        </button>
-                      ) : isHost1 ? (
-                        <button
-                          onClick={() => {
-                            setSelectedLLMId(model.id);
-                            setSelectedModelName(model.modelName);
-                            setExistingShardUrl(model.shardUrl1 || '');
-                            setShowJoinForm(true);
-                          }}
-                          className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Complete My Model
-                        </button>
-                      ) : null}
-                    </motion.div>
+                       <div className="space-y-2">
+                         {isComplete ? (
+                           <button
+                             onClick={() => router.push(`/chat?modelId=${model.id}`)}
+                             className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                           >
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                             </svg>
+                             Use in Chat
+                           </button>
+                         ) : isHost1 ? (
+                           <button
+                             onClick={() => {
+                               setSelectedLLMId(model.id);
+                               setSelectedModelName(model.modelName);
+                               setExistingShardUrl(model.shardUrl1 || '');
+                               setShowJoinForm(true);
+                             }}
+                             className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                           >
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                             </svg>
+                             Complete My Model
+                           </button>
+                         ) : null}
+                         
+                         {/* Stop Hosting Button */}
+                         <button
+                           onClick={() => handleStopLLMClick(model)}
+                           className="w-full py-2 px-4 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                         >
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                           </svg>
+                           Stop Hosting
+                         </button>
+                       </div>
+                     </motion.div>
                   );
                 })}
               </div>
@@ -906,7 +1049,7 @@ const DashboardPage = () => {
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Incomplete Models</h2>
-              <p className="text-gray-600 mt-1">Join as a second host to complete these models and earn rewards</p>
+              <p className="text-gray-600 mt-1">Models waiting for a host to complete. Join to earn rewards!</p>
             </div>
 
             {isLoadingIncomplete ? (
@@ -918,7 +1061,7 @@ const DashboardPage = () => {
                 <div className="text-center max-w-md">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No Incomplete Models</h3>
                   <p className="text-gray-600 mb-6">
-                    There are currently no models waiting for a second host. Check back later or add your own model!
+                    All models on the network are complete! Check back later or add your own model.
                   </p>
                   <button
                     onClick={() => setShowAddForm(true)}
@@ -933,58 +1076,73 @@ const DashboardPage = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {incompleteModels.map((model) => (
-                  <motion.div
-                    key={model.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
-                        <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
-                      </div>
-                      <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-yellow-100 text-yellow-700">
-                        ⏳ Needs Host 2
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-xs mb-4">
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Host 1:</span>
-                        <span className="font-mono text-gray-700 text-xs">{model.host1.slice(0, 10)}...</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Available Shard:</span>
-                        <span className="text-gray-700 font-semibold text-xs">Upper Layers (51-100)</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Existing URL:</span>
-                        <span className="font-mono text-gray-700 break-all text-xs">{model.shardUrl1?.slice(0, 40)}...</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Pool Balance:</span>
-                        <span className="text-gray-700 font-semibold text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[10px]">OG</span></span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedLLMId(model.id);
-                        setSelectedModelName(model.modelName);
-                        setExistingShardUrl(model.shardUrl1 || '');
-                        setShowJoinForm(true);
-                      }}
-                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                {incompleteModels.map((model) => {
+                  // Determine which host is missing
+                  const host1Empty = !model.host1 || model.host1 === '0x0000000000000000000000000000000000000000';
+                  const host2Empty = !model.host2 || model.host2 === '0x0000000000000000000000000000000000000000';
+                  
+                  // Determine available shard and existing host info
+                  const needsHost1 = host1Empty && !host2Empty;
+                  const needsHost2 = !host1Empty && host2Empty;
+                  const existingHost = needsHost1 ? model.host2 : model.host1;
+                  const existingShardUrl = needsHost1 ? model.shardUrl2 : model.shardUrl1;
+                  const availableShard = needsHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)';
+                  const hostLabel = needsHost1 ? 'Host 2' : 'Host 1';
+                  const joinAsHost = needsHost1 ? '1' : '2';
+                  
+                  return (
+                    <motion.div
+                      key={model.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Join as Host 2
-                    </button>
-                  </motion.div>
-                ))}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
+                          <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
+                        </div>
+                        <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-yellow-100 text-yellow-700">
+                          ⏳ Needs Host {joinAsHost}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs mb-4">
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">{hostLabel}:</span>
+                          <span className="font-mono text-gray-700 text-xs">{existingHost?.slice(0, 10)}...</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Available Shard:</span>
+                          <span className="text-gray-700 font-semibold text-xs">{availableShard}</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Existing URL:</span>
+                          <span className="font-mono text-gray-700 break-all text-xs">{existingShardUrl?.slice(0, 40)}...</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Pool Balance:</span>
+                          <span className="text-gray-700 font-semibold text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[10px]">0G</span></span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedLLMId(model.id);
+                          setSelectedModelName(model.modelName);
+                          setExistingShardUrl(existingShardUrl || '');
+                          setShowJoinForm(true);
+                        }}
+                        className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Join as Host {joinAsHost}
+                      </button>
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </motion.div>
@@ -1000,8 +1158,8 @@ const DashboardPage = () => {
             onCancel={resetJoinForm}
             isWriting={isWriting}
             isConfirming={isConfirming}
-            isMinting={isMinting}
-            isAuthorizing={isAuthorizing}
+            isMinting={false}
+            isAuthorizing={false}
             writeError={writeError}
             availableShard="shard2"
             existingShardUrl={existingShardUrl}
@@ -1034,8 +1192,8 @@ const DashboardPage = () => {
               onCancel={resetForm}
               isWriting={isWriting}
               isConfirming={isConfirming}
-              isMinting={isMinting}
-              isAuthorizing={isAuthorizing}
+              isMinting={false}
+              isAuthorizing={false}
               writeError={writeError}
             />
           </div>
@@ -1203,7 +1361,7 @@ const DashboardPage = () => {
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
             onClick={(e) => {
               // Prevent closing modal by clicking backdrop during minting/authorizing
-              if (!isMinting && !isAuthorizing) {
+              if (!isMintingAndAuthorizing) {
                 e.stopPropagation();
               }
             }}
@@ -1230,9 +1388,10 @@ const DashboardPage = () => {
                         setRegisteredModelName('');
                         setIsSecondHost(false);
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       className="text-white hover:text-violet-100 transition-colors"
                     >
@@ -1317,13 +1476,13 @@ const DashboardPage = () => {
                   {/* Single Step: Complete Process */}
                   <div className="flex items-start gap-3">
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
-                      isAuthConfirmed
+                      isMintAuthConfirmed
                         ? 'bg-green-500 border-green-500' 
                         : hasStartedClaiming
                         ? 'bg-violet-500 border-violet-500 animate-pulse' 
                         : 'bg-white border-violet-300'
                     }`}>
-                      {isAuthConfirmed ? (
+                      {isMintAuthConfirmed ? (
                         <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
@@ -1337,25 +1496,24 @@ const DashboardPage = () => {
                     </div>
                     <div className="flex-1">
                       <p className={`text-base font-semibold mb-1 ${
-                        isAuthConfirmed ? 'text-green-700' : hasStartedClaiming ? 'text-violet-700' : 'text-gray-800'
+                        isMintAuthConfirmed ? 'text-green-700' : hasStartedClaiming ? 'text-violet-700' : 'text-gray-800'
                       }`}>
-                        {isAuthConfirmed ? '✓ INFT Claimed Successfully!' : hasStartedClaiming ? 'Claiming Your INFT...' : 'Mint & Authorize INFT Token'}
+                        {isMintAuthConfirmed ? '✓ INFT Claimed Successfully!' : hasStartedClaiming ? 'Claiming Your INFT...' : 'Mint & Authorize INFT Token'}
                       </p>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        {isAuthConfirmed ? (
-                          'Your INFT has been minted and authorized. You can now use AI inference!'
+                        {isMintAuthConfirmed ? (
+                          <>
+                            Your INFT (#{mintedTokenId}) has been minted and authorized. You can now use AI inference!
+                          </>
                         ) : hasStartedClaiming ? (
                           <>
-                            {isMinting ? '⏳ Sign the transaction in your wallet...' : 
-                             !isMintConfirmed ? '⏳ Confirming transaction on blockchain...' :
-                             isAuthorizing ? '⏳ Auto-authorizing INFT access...' :
-                             '⏳ Processing...'}
+                            {isMintingAndAuthorizing ? '⏳ Minting INFT and authorizing access...' : '⏳ Processing...'}
                           </>
                         ) : (
                           <>
-                            • Mint your Intelligent NFT token<br />
-                            • Confirm transaction on blockchain<br />
-                            • Automatically authorize access
+                            • Backend mints your Intelligent NFT token<br />
+                            • Transaction confirmed on blockchain<br />
+                            • Automatically authorizes your access
                           </>
                         )}
                       </p>
@@ -1364,16 +1522,17 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Buttons */}
-                {!isAuthConfirmed && (
+                {!isMintAuthConfirmed && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
                         setShowClaimINFTModal(false);
                         setRegisteredModelName('');
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       disabled={hasStartedClaiming}
                       className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
@@ -1403,7 +1562,7 @@ const DashboardPage = () => {
                 )}
 
                 {/* Success state after authorization */}
-                {isAuthConfirmed && (
+                {isMintAuthConfirmed && (
                   <>
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -1417,7 +1576,7 @@ const DashboardPage = () => {
                         <span className="font-bold text-base">All Done! 🎉</span>
                       </div>
                       <p className="text-sm text-green-700 mb-3">
-                        Your INFT has been claimed and authorized successfully! You can now use AI inference in the Chat.
+                        Your INFT #{mintedTokenId} has been claimed and authorized successfully! You can now use AI inference in the Chat.
                       </p>
                       <button
                         onClick={() => {
@@ -1425,9 +1584,10 @@ const DashboardPage = () => {
                           setRegisteredModelName('');
                           setIsSecondHost(false);
                           setHasStartedClaiming(false);
-                          setIsAuthConfirmed(false);
-                          setIsAuthorizing(false);
-                          setAuthError(null);
+                          setIsMintAuthConfirmed(false);
+                          setIsMintingAndAuthorizing(false);
+                          setMintAuthError(null);
+                          setMintedTokenId(null);
                         }}
                         className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                       >
@@ -1440,8 +1600,8 @@ const DashboardPage = () => {
                   </>
                 )}
 
-                {/* Error state if authorization fails */}
-                {authError && (
+                {/* Error state if mint/authorization fails */}
+                {mintAuthError && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1452,9 +1612,9 @@ const DashboardPage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div className="flex-1">
-                        <span className="font-semibold text-sm">Authorization Failed</span>
+                        <span className="font-semibold text-sm">Claim Failed</span>
                         <p className="text-xs text-red-700 mt-1">
-                          {authError}
+                          {mintAuthError}
                         </p>
                       </div>
                     </div>
@@ -1464,9 +1624,10 @@ const DashboardPage = () => {
                         setRegisteredModelName('');
                         setIsSecondHost(false);
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                     >
@@ -1481,6 +1642,350 @@ const DashboardPage = () => {
             </motion.div>
           </motion.div>
         )}
+
+        {/* Stop LLM Modal */}
+        {showStopModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={(e) => {
+              if (!isStopping && !isStopConfirming) {
+                setShowStopModal(false);
+                setStopModelId(null);
+                setStopModelName('');
+                setStopHostNumber(null);
+                setIsBothHostsForStop(false);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-red-500 to-red-400 px-6 py-4 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h2 className="text-xl font-bold">Stop Hosting</h2>
+                  </div>
+                  {!isStopping && !isStopConfirming && (
+                    <button
+                      onClick={() => {
+                        setShowStopModal(false);
+                        setStopModelId(null);
+                        setStopModelName('');
+                        setStopHostNumber(null);
+                        setIsBothHostsForStop(false);
+                      }}
+                      className="text-white hover:text-red-100 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <div className="mb-4">
+                  <p className="text-gray-700 mb-2">
+                    You are about to stop hosting <strong>{stopModelName}</strong>.
+                  </p>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="text-sm text-yellow-800">
+                        <p className="font-semibold mb-1">Important:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>Any pending rewards will be paid out</li>
+                          <li>Your hosting slot will be cleared</li>
+                          <li>The model may become incomplete if you're the only host</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* If user hosts both shards, ask which one to stop */}
+                {isBothHostsForStop && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Which shard do you want to stop hosting?
+                    </label>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setStopHostNumber(1)}
+                        className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                          stopHostNumber === 1
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold text-gray-900">Shard 1</div>
+                        <div className="text-xs text-gray-600">Lower Layers (1-50)</div>
+                      </button>
+                      <button
+                        onClick={() => setStopHostNumber(2)}
+                        className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                          stopHostNumber === 2
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold text-gray-900">Shard 2</div>
+                        <div className="text-xs text-gray-600">Upper Layers (51-100)</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* If user only hosts one shard, show which one */}
+                {!isBothHostsForStop && stopHostNumber && (
+                  <div className="mb-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="text-sm text-gray-700">
+                        <span className="font-semibold">Stopping: </span>
+                        Shard {stopHostNumber} - {stopHostNumber === 1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowStopModal(false);
+                      setStopModelId(null);
+                      setStopModelName('');
+                      setStopHostNumber(null);
+                      setIsBothHostsForStop(false);
+                    }}
+                    disabled={isStopping || isStopConfirming}
+                    className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStopLLMConfirm}
+                    disabled={isStopping || isStopConfirming || stopHostNumber === null}
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center justify-center gap-2"
+                  >
+                    {isStopping || isStopConfirming ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        {isStopping ? 'Confirming...' : 'Processing...'}
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Stop Hosting
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Withdraw Earnings Modal */}
+        {showWithdrawModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={(e) => {
+              // Prevent closing modal by clicking backdrop during withdrawal
+              if (!isWithdrawWriting && !isWithdrawConfirming) {
+                e.stopPropagation();
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header with gradient */}
+              <div className="bg-gradient-to-r from-violet-400 to-purple-300 px-6 py-4 text-white sticky top-0 z-10">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h2 className="text-xl font-bold">Withdraw Earnings</h2>
+                  </div>
+                  {!isWithdrawWriting && !isWithdrawConfirming && !isWithdrawConfirmed && (
+                    <button
+                      onClick={() => {
+                        setShowWithdrawModal(false);
+                        setTotalEarnings('0');
+                      }}
+                      className="text-white hover:text-violet-100 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                  {(isWithdrawWriting || isWithdrawConfirming) && (
+                    <div className="text-white opacity-50 cursor-not-allowed" title="Please wait for the transaction to complete">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <p className="text-violet-100 text-sm">
+                  Claim your earnings from hosting models
+                </p>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                {/* Earnings Display */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-center p-6 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg">
+                    <div className="text-center">
+                      <p className="text-sm text-gray-600 mb-1">Total Available Earnings</p>
+                      <p className="text-4xl font-bold text-violet-600">{totalEarnings} <span className="text-2xl">0G</span></p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="mb-4">
+                  <div className="flex items-start gap-2 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                    <svg className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <h3 className="font-semibold text-violet-900 mb-1">About Withdrawals</h3>
+                      <p className="text-sm text-violet-700">
+                        This will withdraw all your earnings from hosting models in a single transaction. The funds will be sent to your connected wallet.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Steps */}
+                {!isWithdrawConfirmed && (
+                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
+                    <p className="text-xs font-semibold text-gray-700 mb-3">
+                      {!isWithdrawWriting && !isWithdrawConfirming ? 'What happens when you withdraw:' : 'Progress:'}
+                    </p>
+                    
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                        isWithdrawWriting || isWithdrawConfirming
+                          ? 'bg-violet-500 border-violet-500 animate-pulse' 
+                          : 'bg-white border-violet-300'
+                      }`}>
+                        {(isWithdrawWriting || isWithdrawConfirming) ? (
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                        ) : (
+                          <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-base font-semibold mb-1 ${
+                          (isWithdrawWriting || isWithdrawConfirming) ? 'text-violet-700' : 'text-gray-800'
+                        }`}>
+                          {isWithdrawConfirming ? 'Confirming Transaction...' : isWithdrawWriting ? 'Waiting for Signature...' : 'Sign Transaction to Withdraw'}
+                        </p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          {(isWithdrawWriting || isWithdrawConfirming) ? (
+                            <>⏳ Processing withdrawal from all hosted models...</>
+                          ) : (
+                            <>
+                              • You'll be prompted to sign the transaction<br />
+                              • All earnings will be withdrawn at once<br />
+                              • Funds will be sent to your wallet
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Buttons */}
+                {!isWithdrawConfirmed && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setShowWithdrawModal(false);
+                        setTotalEarnings('0');
+                      }}
+                      disabled={isWithdrawWriting || isWithdrawConfirming}
+                      className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleWithdrawConfirm}
+                      disabled={isWithdrawWriting || isWithdrawConfirming}
+                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
+                    >
+                      {(isWithdrawWriting || isWithdrawConfirming) ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          {isWithdrawWriting ? 'Signing...' : 'Confirming...'}
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Withdraw Now
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Success state after withdrawal */}
+                {isWithdrawConfirmed && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-green-50 border-2 border-green-300 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2 text-green-800 mb-2">
+                      <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-bold text-base">Withdrawal Successful! 🎉</span>
+                    </div>
+                    <p className="text-sm text-green-700 mb-3">
+                      Your earnings of {totalEarnings} 0G have been successfully withdrawn to your wallet!
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      This window will close automatically...
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
       </div>
     </div>
   );

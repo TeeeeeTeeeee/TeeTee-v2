@@ -132,7 +132,7 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
     ) ERC721(_name, _symbol) Ownable(_initialOwner) {
         require(_dataVerifier != address(0), "DataVerifier address cannot be zero");
         dataVerifier = IDataVerifierAdapter(_dataVerifier);
-        _tokenIdCounter = 1; // Start token IDs from 1
+        _tokenIdCounter = 1; // Start token IDs from 1 (INFT standard)
     }
     
     // ================================
@@ -272,6 +272,32 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         if (userAuthEpoch[tokenId][user] == currentEpoch && currentEpoch != 0) {
             userAuthEpoch[tokenId][user] = 0; // Set to 0 to revoke
             emit AuthorizedUsage(tokenId, user, false);
+        }
+    }
+    
+    /**
+     * @dev Contract owner can authorize usage for any token (for backend automation)
+     * @param tokenId Token ID to authorize usage for
+     * @param user Address to grant authorization
+     * 
+     * This allows the contract owner (backend) to authorize users immediately after minting
+     * without needing to be the token owner or approved.
+     */
+    function ownerAuthorizeUsage(uint256 tokenId, address user) external onlyOwner {
+        require(user != address(0), "Cannot authorize zero address");
+        _requireOwned(tokenId); // Verify token exists
+        
+        uint64 currentEpoch = authEpoch[tokenId];
+        if (currentEpoch == 0) {
+            // First authorization for this token, initialize epoch
+            authEpoch[tokenId] = 1;
+            currentEpoch = 1;
+        }
+        
+        // Grant authorization by setting user's epoch to current epoch
+        if (userAuthEpoch[tokenId][user] != currentEpoch) {
+            userAuthEpoch[tokenId][user] = currentEpoch;
+            emit AuthorizedUsage(tokenId, user, true);
         }
     }
     

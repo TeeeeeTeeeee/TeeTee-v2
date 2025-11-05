@@ -49,7 +49,10 @@ const INFT_ABI = [
   "function ownerOf(uint256 tokenId) view returns (address)",
   "function encryptedURI(uint256 tokenId) view returns (string)",
   "function metadataHash(uint256 tokenId) view returns (bytes32)",
-  "function authorizeUsage(uint256 tokenId, address user)"
+  "function authorizeUsage(uint256 tokenId, address user)",
+  "function ownerAuthorizeUsage(uint256 tokenId, address user)",
+  "function mint(address to, string encryptedURI, bytes32 metadataHash) returns (uint256)",
+  "function getCurrentTokenId() view returns (uint256)"
 ];
 
 interface InferRequest {
@@ -463,6 +466,12 @@ class INFTOracleService {
     // Auto-authorize INFT endpoint (owner only)
     this.app.post('/authorize-inft', this.handleAuthorizeINFT.bind(this));
 
+    // Mint INFT endpoint (owner only)
+    this.app.post('/mint-inft', this.handleMintINFT.bind(this));
+    
+    // Auto-authorize INFT endpoint (owner only) - kept for backward compatibility
+    this.app.post('/mint-and-authorize-inft', this.handleMintAndAuthorizeINFT.bind(this));
+
     // 404 handler
     this.app.use((req, res) => {
       res.status(404).json({ error: 'Endpoint not found' });
@@ -546,22 +555,24 @@ class INFTOracleService {
         return;
       }
 
-      console.log(`[${requestId}] Processing inference for token ${request.tokenId}`);
+      console.log(`[${requestId}] Processing inference for model ${request.tokenId}`);
 
-      // Check authorization
+      // Check INFT authorization (always check token 1 - the first INFT)
+      // Note: request.tokenId is the MODEL ID (0-based), not INFT token ID
+      const inftTokenId = 1; // Always use INFT token 1 for authorization
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
       let owner: string;
       let isAuthorized: boolean;
       
       try {
-        owner = await this.inftContract.ownerOf(request.tokenId);
-        isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
-        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
+        owner = await this.inftContract.ownerOf(inftTokenId);
+        isAuthorized = await this.inftContract.isAuthorized(inftTokenId, userAddress);
+        console.log(`[${requestId}] INFT token ${inftTokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
       } catch (error) {
-        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
+        console.error(`[${requestId}] INFT token ${inftTokenId} does not exist or error checking:`, error);
         res.status(404).json({
           success: false,
-          error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.`
+          error: `INFT token #${inftTokenId} does not exist. Please mint an INFT first.`
         });
         return;
       }
@@ -569,7 +580,7 @@ class INFTOracleService {
       if (!isAuthorized) {
         res.status(403).json({
           success: false,
-          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
+          error: `Access denied. You are not authorized to use INFT #${inftTokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
         });
         return;
       }
@@ -709,11 +720,21 @@ class INFTOracleService {
       const { tokenId, userAddress } = req.body;
       const requestId = req.headers['x-request-id'] as string;
 
-      // Validate request
-      if (!tokenId || !userAddress) {
+      console.log(`[${requestId}] Authorization request - tokenId: ${tokenId} (type: ${typeof tokenId}), userAddress: ${userAddress}`);
+
+      // Validate request - INFT tokens start at 1
+      if (typeof tokenId !== 'number' || !Number.isFinite(tokenId) || tokenId < 1) {
         res.status(400).json({ 
           success: false,
-          error: 'Missing required fields: tokenId and userAddress' 
+          error: `Invalid tokenId. Must be >= 1. Received: ${tokenId} (type: ${typeof tokenId})` 
+        });
+        return;
+      }
+      
+      if (!userAddress || typeof userAddress !== 'string') {
+        res.status(400).json({ 
+          success: false,
+          error: `Invalid userAddress. Must be a string. Received: ${userAddress} (type: ${typeof userAddress})` 
         });
         return;
       }
@@ -755,9 +776,9 @@ class INFTOracleService {
         return;
       }
 
-      // Call authorizeUsage with owner's wallet
+      // Call ownerAuthorizeUsage with owner's wallet (contract owner can authorize any token)
       console.log(`[${requestId}] Sending authorization transaction...`);
-      const tx = await this.inftContractWithSigner.authorizeUsage(tokenId, userAddress);
+      const tx = await this.inftContractWithSigner.ownerAuthorizeUsage(tokenId, userAddress);
       
       console.log(`[${requestId}] Transaction submitted: ${tx.hash}`);
       console.log(`[${requestId}] Waiting for confirmation...`);
@@ -781,6 +802,334 @@ class INFTOracleService {
       res.status(500).json({ 
         success: false,
         error: error?.message || 'Authorization failed',
+        details: error?.reason || error?.code
+      });
+    }
+  }
+
+  /**
+   * Handle mint INFT only (no authorization)
+   * Uses contract owner's private key to mint INFT to the user's address
+   */
+  private async handleMintINFT(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { userAddress, encryptedURI, metadataHash } = req.body;
+      const requestId = req.headers['x-request-id'] as string;
+
+      console.log(`[${requestId}] Mint request - userAddress: ${userAddress}`);
+
+      // Validate request
+      if (!userAddress || typeof userAddress !== 'string') {
+        res.status(400).json({ 
+          success: false,
+          error: `Invalid userAddress. Must be a string. Received: ${userAddress} (type: ${typeof userAddress})` 
+        });
+        return;
+      }
+
+      // Use default values if not provided
+      const finalEncryptedURI = encryptedURI || '0g://storage/model-data-' + Date.now();
+      // Generate a proper metadata hash (cannot be all zeros per INFT contract requirement)
+      const finalMetadataHash = metadataHash || '0x' + crypto.createHash('sha256')
+        .update(`${userAddress}-${finalEncryptedURI}-${Date.now()}`)
+        .digest('hex');
+
+      // Check if wallet is initialized
+      if (!this.ownerWallet || !this.inftContractWithSigner) {
+        console.error(`[${requestId}] Mint failed: No owner wallet configured`);
+        res.status(500).json({ 
+          success: false,
+          error: 'Mint not available. PRIVATE_KEY not configured.' 
+        });
+        return;
+      }
+
+      console.log(`[${requestId}] Minting INFT for user ${userAddress}...`);
+
+      // Get current token ID (this will be the ID of the token we're about to mint)
+      let nextTokenId: number;
+      try {
+        const currentTokenId = await this.inftContract.getCurrentTokenId();
+        nextTokenId = Number(currentTokenId);
+        
+        // Safety check: Token IDs must be >= 1 (INFT standard)
+        if (nextTokenId < 1) {
+          console.warn(`[${requestId}] ⚠️ Counter returned ${nextTokenId}, falling back to 1`);
+          nextTokenId = 1;
+        }
+        
+        console.log(`[${requestId}] Next token ID will be: ${nextTokenId}`);
+      } catch (error) {
+        console.error(`[${requestId}] Failed to get current token ID:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to get current token ID' 
+        });
+        return;
+      }
+
+      // Mint the INFT
+      console.log(`[${requestId}] Sending mint transaction...`);
+      let mintTx;
+      try {
+        mintTx = await this.inftContractWithSigner.mint(
+          userAddress,
+          finalEncryptedURI,
+          finalMetadataHash
+        );
+        
+        console.log(`[${requestId}] Mint transaction submitted: ${mintTx.hash}`);
+        console.log(`[${requestId}] Waiting for mint confirmation (may take 10-30 seconds)...`);
+        
+        // Wait for transaction confirmation with retries (0G RPC can be slow)
+        let mintReceipt;
+        let retries = 0;
+        const maxRetries = 5;
+        
+        while (retries < maxRetries) {
+          try {
+            mintReceipt = await mintTx.wait(1);
+            break;
+          } catch (waitError: any) {
+            retries++;
+            console.log(`[${requestId}] Retry ${retries}/${maxRetries} - waiting for receipt...`);
+            
+            if (retries >= maxRetries) {
+              console.log(`[${requestId}] ⚠️ Could not get receipt after ${maxRetries} retries, but transaction was submitted: ${mintTx.hash}`);
+              break;
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        if (mintReceipt) {
+          console.log(`[${requestId}] ✅ Mint confirmed! Block: ${mintReceipt.blockNumber}, Token ID: ${nextTokenId}`);
+        }
+        
+        // Success!
+        res.json({ 
+          success: true,
+          message: 'INFT minted successfully',
+          tokenId: nextTokenId,
+          txHash: mintTx.hash
+        });
+
+      } catch (error: any) {
+        console.error(`[${requestId}] Mint transaction failed:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: error?.message || 'Mint transaction failed',
+          details: error?.reason || error?.code
+        });
+        return;
+      }
+
+    } catch (error: any) {
+      const requestId = req.headers['x-request-id'] as string;
+      console.error(`[${requestId}] Mint error:`, error);
+      
+      res.status(500).json({ 
+        success: false,
+        error: error?.message || 'Mint failed',
+        details: error?.reason || error?.code
+      });
+    }
+  }
+
+  /**
+   * Handle mint and auto-authorization of INFT
+   * Uses contract owner's private key to mint INFT and automatically authorize the user
+   */
+  private async handleMintAndAuthorizeINFT(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { userAddress, encryptedURI, metadataHash } = req.body;
+      const requestId = req.headers['x-request-id'] as string;
+
+      console.log(`[${requestId}] Mint & Auth request - userAddress: ${userAddress}`);
+
+      // Validate request
+      if (!userAddress || typeof userAddress !== 'string') {
+        res.status(400).json({ 
+          success: false,
+          error: `Invalid userAddress. Must be a string. Received: ${userAddress} (type: ${typeof userAddress})` 
+        });
+        return;
+      }
+
+      // Use default values if not provided
+      const finalEncryptedURI = encryptedURI || '0g://storage/model-data-' + Date.now();
+      // Generate a proper metadata hash (cannot be all zeros per INFT contract requirement)
+      const finalMetadataHash = metadataHash || '0x' + crypto.createHash('sha256')
+        .update(`${userAddress}-${finalEncryptedURI}-${Date.now()}`)
+        .digest('hex');
+
+      // Check if wallet is initialized
+      if (!this.ownerWallet || !this.inftContractWithSigner) {
+        console.error(`[${requestId}] Mint failed: No owner wallet configured`);
+        res.status(500).json({ 
+          success: false,
+          error: 'Mint not available. PRIVATE_KEY not configured.' 
+        });
+        return;
+      }
+
+      console.log(`[${requestId}] Minting INFT for user ${userAddress}...`);
+
+      // Step 1: Get current token ID (this will be the ID of the token we're about to mint)
+      let nextTokenId: number;
+      try {
+        const currentTokenId = await this.inftContract.getCurrentTokenId();
+        nextTokenId = Number(currentTokenId);
+        
+        // Safety check: Token IDs must be >= 1 (INFT standard)
+        if (nextTokenId < 1) {
+          console.warn(`[${requestId}] ⚠️ Counter returned ${nextTokenId}, falling back to 1`);
+          nextTokenId = 1;
+        }
+        
+        console.log(`[${requestId}] Next token ID will be: ${nextTokenId}`);
+      } catch (error) {
+        console.error(`[${requestId}] Failed to get current token ID:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to get current token ID' 
+        });
+        return;
+      }
+
+      // Step 2: Mint the INFT
+      console.log(`[${requestId}] Sending mint transaction...`);
+      let mintTx;
+      try {
+        mintTx = await this.inftContractWithSigner.mint(
+          userAddress,
+          finalEncryptedURI,
+          finalMetadataHash
+        );
+        
+        console.log(`[${requestId}] Mint transaction submitted: ${mintTx.hash}`);
+        console.log(`[${requestId}] Waiting for mint confirmation (may take 10-30 seconds)...`);
+        
+        // Wait for transaction confirmation with retries (0G RPC can be slow)
+        let mintReceipt;
+        let retries = 0;
+        const maxRetries = 5;
+        
+        while (retries < maxRetries) {
+          try {
+            mintReceipt = await mintTx.wait(1); // Wait for 1 confirmation
+            break; // Success, exit retry loop
+          } catch (waitError: any) {
+            retries++;
+            console.log(`[${requestId}] Retry ${retries}/${maxRetries} - waiting for receipt...`);
+            
+            if (retries >= maxRetries) {
+              // Max retries reached - but transaction was submitted
+              console.log(`[${requestId}] ⚠️ Could not get receipt after ${maxRetries} retries, but transaction was submitted: ${mintTx.hash}`);
+              console.log(`[${requestId}] Proceeding with authorization (transaction likely succeeded)...`);
+              break;
+            }
+            
+            // Wait 3 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        if (mintReceipt) {
+          console.log(`[${requestId}] ✅ Mint confirmed! Block: ${mintReceipt.blockNumber}, Token ID: ${nextTokenId}`);
+        }
+      } catch (error: any) {
+        console.error(`[${requestId}] Mint transaction failed:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: error?.message || 'Mint transaction failed',
+          details: error?.reason || error?.code
+        });
+        return;
+      }
+
+      // Step 3: Auto-authorize the user
+      console.log(`[${requestId}] Auto-authorizing user ${userAddress} for INFT #${nextTokenId}...`);
+      
+      // Check if already authorized (shouldn't be, but just in case)
+      const alreadyAuthorized = await this.inftContract.isAuthorized(nextTokenId, userAddress);
+      if (alreadyAuthorized) {
+        console.log(`[${requestId}] User ${userAddress} is already authorized for INFT #${nextTokenId}`);
+        res.json({ 
+          success: true,
+          message: 'INFT minted and user is already authorized',
+          tokenId: nextTokenId,
+          mintTxHash: mintTx.hash,
+          authTxHash: null
+        });
+        return;
+      }
+
+      // Call ownerAuthorizeUsage with owner's wallet (contract owner can authorize any token)
+      console.log(`[${requestId}] Sending authorization transaction...`);
+      let authTx;
+      try {
+        authTx = await this.inftContractWithSigner.ownerAuthorizeUsage(nextTokenId, userAddress);
+        
+        console.log(`[${requestId}] Authorization transaction submitted: ${authTx.hash}`);
+        console.log(`[${requestId}] Waiting for authorization confirmation (may take 10-30 seconds)...`);
+        
+        // Wait for transaction confirmation with retries (0G RPC can be slow)
+        let authReceipt;
+        let authRetries = 0;
+        const maxAuthRetries = 5;
+        
+        while (authRetries < maxAuthRetries) {
+          try {
+            authReceipt = await authTx.wait(1); // Wait for 1 confirmation
+            break; // Success, exit retry loop
+          } catch (waitError: any) {
+            authRetries++;
+            console.log(`[${requestId}] Auth retry ${authRetries}/${maxAuthRetries} - waiting for receipt...`);
+            
+            if (authRetries >= maxAuthRetries) {
+              console.log(`[${requestId}] ⚠️ Could not get auth receipt after ${maxAuthRetries} retries, but transaction was submitted: ${authTx.hash}`);
+              break;
+            }
+            
+            // Wait 3 seconds before retrying
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
+        }
+        
+        if (authReceipt) {
+          console.log(`[${requestId}] ✅ Authorization confirmed! Block: ${authReceipt.blockNumber}`);
+        }
+      } catch (error: any) {
+        console.error(`[${requestId}] Authorization failed (but mint succeeded):`, error);
+        // Mint succeeded, but auth failed - return partial success
+        res.status(207).json({ 
+          success: true,
+          warning: 'INFT minted but authorization failed',
+          tokenId: nextTokenId,
+          mintTxHash: mintTx.hash,
+          authError: error?.message || 'Authorization failed'
+        });
+        return;
+      }
+
+      // Success!
+      res.json({ 
+        success: true,
+        message: 'INFT minted and user authorized successfully',
+        tokenId: nextTokenId,
+        mintTxHash: mintTx.hash,
+        authTxHash: authTx.hash
+      });
+
+    } catch (error: any) {
+      const requestId = req.headers['x-request-id'] as string;
+      console.error(`[${requestId}] Mint & Auth error:`, error);
+      
+      res.status(500).json({ 
+        success: false,
+        error: error?.message || 'Mint and authorization failed',
         details: error?.reason || error?.code
       });
     }
@@ -1154,11 +1503,13 @@ Provide a helpful, concise response:`;
       console.log(`✅ Network Mode: ${networkInfo.isMainnet ? '🔴 MAINNET' : '🟡 TESTNET'}`);
       console.log(`✅ INFT Contract: ${this.inftContract.target}`);
       console.log(`\n📡 Endpoints:`);
-      console.log(`   - GET  /health           - Service health check`);
-      console.log(`   - GET  /llm/health       - LLM health check`);
-      console.log(`   - POST /authorize-inft   - Auto-authorize INFT (owner only)`);
-      console.log(`   - POST /infer            - Run inference`);
-      console.log(`   - POST /infer/stream     - Streaming inference`);
+      console.log(`   - GET  /health                    - Service health check`);
+      console.log(`   - GET  /llm/health                - LLM health check`);
+      console.log(`   - POST /mint-inft                 - Mint INFT (owner only)`);
+      console.log(`   - POST /authorize-inft            - Auto-authorize INFT (owner only)`);
+      console.log(`   - POST /mint-and-authorize-inft   - Mint & auto-authorize (legacy, use separate calls)`);
+      console.log(`   - POST /infer                     - Run inference`);
+      console.log(`   - POST /infer/stream              - Streaming inference`);
       console.log(`\n🔐 Security:`);
       console.log(`   - Rate limiting: 30 req/min`);
       console.log(`   - Input sanitization: enabled`);

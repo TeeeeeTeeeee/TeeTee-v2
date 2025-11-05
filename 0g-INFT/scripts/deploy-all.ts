@@ -85,21 +85,22 @@ async function main() {
   console.log("   🔍 Verified - Oracle Match:", configuredOracle.toLowerCase() === oracleAddress.toLowerCase() ? "✓" : "✗");
   
   console.log("\n" + "═".repeat(60));
-  console.log("STEP 3/3: Deploying INFTFixed");
+  console.log("STEP 3/3: Deploying INFT");
   console.log("═".repeat(60));
   
-  // Deploy INFTFixed
-  console.log("\n📄 Deploying INFTFixed contract...");
-  const INFTFixed = await ethers.getContractFactory("INFTFixed");
-  const inft = await INFTFixed.deploy(
-    dataVerifierAddress,
+  // Deploy INFT (updated with ownerAuthorizeUsage)
+  console.log("\n📄 Deploying INFT contract...");
+  const INFT = await ethers.getContractFactory("INFT");
+  const inft = await INFT.deploy(
     "0G Intelligent NFTs",
-    "0G-INFT"
+    "0G-INFT",
+    dataVerifierAddress,
+    deployer.address // initialOwner
   );
   await inft.waitForDeployment();
   const inftAddress = await inft.getAddress();
   
-  console.log("✅ INFTFixed deployed!");
+  console.log("✅ INFT deployed!");
   console.log("   📧 Address:", inftAddress);
   console.log("   ⛽ Tx Hash:", inft.deploymentTransaction()?.hash);
   
@@ -143,7 +144,7 @@ async function main() {
       },
       inft: {
         address: inftAddress,
-        name: "INFTFixed",
+        name: "INFT",
         txHash: inft.deploymentTransaction()?.hash,
         dataVerifierAddress: dataVerifierAddress,
         tokenName: inftName,
@@ -152,9 +153,9 @@ async function main() {
     },
     features: [
       "ERC-7857 Intelligent NFT Standard",
-      "Improved error handling with custom errors",
-      "Optimized gas usage",
-      "Proper error bubbling in DataVerifier",
+      "Backend authorization with ownerAuthorizeUsage",
+      "Token IDs start at 1 (never 0)",
+      "Epoch-based authorization system (O(1) clearing)",
       "0G Storage integration ready"
     ]
   };
@@ -180,7 +181,7 @@ async function main() {
   console.log("├────────────────────────────────────────────────────────────┤");
   console.log(`│ OracleStub                  │ ${oracleAddress.substring(0, 20)}... │`);
   console.log(`│ DataVerifierAdapterFixed    │ ${dataVerifierAddress.substring(0, 20)}... │`);
-  console.log(`│ INFTFixed                   │ ${inftAddress.substring(0, 20)}... │`);
+  console.log(`│ INFT                        │ ${inftAddress.substring(0, 20)}... │`);
   console.log("└────────────────────────────────────────────────────────────┘");
   
   console.log("\n🌐 Block Explorer Links:");
