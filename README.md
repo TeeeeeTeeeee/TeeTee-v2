@@ -82,7 +82,7 @@ Unlike other AI platforms that claim decentralization but rely on centralized in
 
 Combined with **0G Storage's decentralized architecture**, we store model weights and metadata in a trustless, verifiable manner—making TeeTee the most secure AI platform in Web3.
 
-#### 2. **First ERC-7857 (iNFT) Implementation on 0G**
+#### 2. **ERC-7857 (iNFT) Implementation on 0G**
 TeeTee pioneers **Intelligent NFTs** on 0G Network, enabling:
 - 🎨 **AI Agent Ownership**: Tokenize and trade AI models as NFTs with embedded intelligence
 - 🔐 **Secure Metadata Transfer**: When an iNFT is sold, the AI model, memory, and traits transfer securely via oracle-assisted encryption
