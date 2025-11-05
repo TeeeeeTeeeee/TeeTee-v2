@@ -9,6 +9,8 @@ import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
 import { useWithdrawAll } from '../lib/contracts/creditUse/writes/useWithdrawAll';
+import { useGetLifetimeEarnings } from '../lib/contracts/creditUse/reads/useGetLifetimeEarnings';
+import { useGetTotalUnclaimedEarnings } from '../lib/contracts/creditUse/reads/useGetTotalUnclaimedEarnings';
 import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
@@ -151,6 +153,10 @@ const DashboardPage = () => {
   // Stop and Withdraw hooks
   const { stopLLM, isWriting: isStopping, isConfirming: isStopConfirming, isConfirmed: isStopConfirmed, resetWrite: resetStopWrite } = useStopLLM();
   const { withdrawAll, isWriting: isWithdrawWriting, isConfirming: isWithdrawConfirming, isConfirmed: isWithdrawConfirmed, resetWrite: resetWithdrawWrite } = useWithdrawAll();
+  
+  // Earnings hooks
+  const { lifetimeEarnings, refetch: refetchLifetime } = useGetLifetimeEarnings(connectedAddress as `0x${string}`);
+  const { unclaimedEarnings, refetch: refetchUnclaimed } = useGetTotalUnclaimedEarnings(connectedAddress as `0x${string}`);
   
   // Backend mint & authorization state
   const [isMintingAndAuthorizing, setIsMintingAndAuthorizing] = useState(false);
@@ -388,6 +394,8 @@ const DashboardPage = () => {
       
       // Refetch data
       refetchTotal();
+      refetchLifetime();
+      refetchUnclaimed();
     }
   }, [isConfirmed, connectedAddress, registeredModelName]);
   
@@ -593,6 +601,8 @@ const DashboardPage = () => {
       setIsBothHostsForStop(false);
       resetStopWrite();
       refetchTotal();
+      refetchLifetime();
+      refetchUnclaimed();
     };
     
     handleDeauthorization();
@@ -602,17 +612,14 @@ const DashboardPage = () => {
   const handleWithdrawAllClick = () => {
     if (!connectedAddress || myHostedModels.length === 0) return;
     
-    // Calculate total earnings
-    const totalWei = myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0);
-    const totalOG = totalWei / 1e15;
-    const formattedEarnings = totalOG.toFixed(3);
+    // Get unclaimed earnings from smart contract (correct Wei conversion)
+    const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+    const unclaimedOG = unclaimedWei / 1e18; // Wei to 0G
+    const formattedEarnings = unclaimedOG.toFixed(5);
     
-    // Only open modal if earnings > 0
-    if (totalOG > 0) {
-      setTotalEarnings(formattedEarnings);
-      setShowWithdrawModal(true);
-    }
-    // If earnings are 0, do nothing
+    // Always open modal - user can see lifetime earnings even if unclaimed is 0
+    setTotalEarnings(formattedEarnings);
+    setShowWithdrawModal(true);
   };
 
   // Handle the actual withdrawal transaction
@@ -631,13 +638,15 @@ const DashboardPage = () => {
   useEffect(() => {
     if (isWithdrawConfirmed) {
       refetchTotal();
+      refetchLifetime();
+      refetchUnclaimed();
       // Close the modal after successful withdrawal
       setTimeout(() => {
         setShowWithdrawModal(false);
         resetWithdrawWrite();
       }, 2000); // Show success state for 2 seconds before closing
     }
-  }, [isWithdrawConfirmed, refetchTotal]);
+  }, [isWithdrawConfirmed, refetchTotal, refetchLifetime, refetchUnclaimed]);
 
   return (
     <div className="min-h-screen bg-transparent font-inter">
@@ -796,12 +805,34 @@ const DashboardPage = () => {
                   {
                     color: '#FFFFFF',
                     title: (() => {
-                      const totalWei = myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0);
-                      const totalOG = totalWei / 1e15;
-                      return totalOG.toFixed(3) + ' 0G';
+                      // Show unclaimed earnings - number only (unit in label)
+                      const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+                      const unclaimedOG = unclaimedWei / 1e18; // Wei to 0G
+                      const unclaimedGwei = unclaimedWei / 1e9; // Wei to Gwei
+                      
+                      // If less than 0.001 0G, show in Gwei (no decimals)
+                      if (unclaimedOG < 0.001) {
+                        return Math.floor(unclaimedGwei).toLocaleString();
+                      }
+                      return unclaimedOG.toFixed(5);
                     })(),
-                    description: 'Total earned from hosting',
-                    label: 'Earnings Total',
+                    description: (() => {
+                      // Show credit equivalent (0.001 0G = 200 credits)
+                      const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+                      const unclaimedOG = unclaimedWei / 1e18;
+                      const credits = Math.floor(unclaimedOG * 200000); // 0.001 0G = 200 credits
+                      return `${credits.toLocaleString()} credits`;
+                    })(),
+                    label: (() => {
+                      // Add unit to label
+                      const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+                      const unclaimedOG = unclaimedWei / 1e18;
+                      
+                      if (unclaimedOG < 0.001) {
+                        return 'Total Unclaimed Earnings (Gwei)';
+                      }
+                      return 'Total Unclaimed Earnings (0G)';
+                    })(),
                     onClick: () => handleWithdrawAllClick()
                   },
                   {
@@ -1902,8 +1933,65 @@ const DashboardPage = () => {
                   <div className="flex items-center justify-center p-6 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg">
                     <div className="text-center">
                       <p className="text-sm text-gray-600 mb-1">Total Available Earnings</p>
-                      <p className="text-4xl font-bold text-violet-600">{totalEarnings} <span className="text-2xl">0G</span></p>
+                      <p className="text-4xl font-bold text-violet-600">
+                        {(() => {
+                          const ogAmount = parseFloat(totalEarnings);
+                          const gwei = ogAmount * 1e9; // 0G to Gwei
+                          
+                          // If less than 0.001 0G, show in Gwei (no decimals)
+                          if (ogAmount < 0.001 && ogAmount > 0) {
+                            return `${Math.floor(gwei).toLocaleString()} Gwei`;
+                          }
+                          return `${totalEarnings} 0G`;
+                        })()}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        {(() => {
+                          const credits = Math.floor(parseFloat(totalEarnings) * 200000);
+                          return `≈ ${credits.toLocaleString()} credits`;
+                        })()}
+                      </p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Lifetime Earnings Display */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-500">Lifetime Earnings (All Time)</p>
+                      <p className="text-lg font-semibold text-gray-800">
+                        {(() => {
+                          // Lifetime = already withdrawn + unclaimed (correct Wei conversion)
+                          const withdrawnWei = lifetimeEarnings ? Number(lifetimeEarnings) : 0;
+                          const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+                          const withdrawnOG = withdrawnWei / 1e18;
+                          const unclaimedOG = unclaimedWei / 1e18;
+                          const totalLifetimeOG = withdrawnOG + unclaimedOG;
+                          const totalLifetimeGwei = (withdrawnWei + unclaimedWei) / 1e9;
+                          
+                          // If less than 0.001 0G, show in Gwei (no decimals)
+                          if (totalLifetimeOG < 0.001 && totalLifetimeOG > 0) {
+                            return `${Math.floor(totalLifetimeGwei).toLocaleString()} Gwei`;
+                          }
+                          return `${totalLifetimeOG.toFixed(5)} 0G`;
+                        })()}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {(() => {
+                          const withdrawnWei = lifetimeEarnings ? Number(lifetimeEarnings) : 0;
+                          const unclaimedWei = unclaimedEarnings ? Number(unclaimedEarnings) : 0;
+                          const withdrawnOG = withdrawnWei / 1e18;
+                          const unclaimedOG = unclaimedWei / 1e18;
+                          const totalLifetimeOG = withdrawnOG + unclaimedOG;
+                          const credits = Math.floor(totalLifetimeOG * 200000);
+                          return `≈ ${credits.toLocaleString()} credits`;
+                        })()}
+                      </p>
+                    </div>
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
                   </div>
                 </div>
 
@@ -1916,7 +2004,7 @@ const DashboardPage = () => {
                     <div>
                       <h3 className="font-semibold text-violet-900 mb-1">About Withdrawals</h3>
                       <p className="text-sm text-violet-700">
-                        This will withdraw all your earnings from hosting models in a single transaction. The funds will be sent to your connected wallet.
+                        This will withdraw all your unclaimed earnings from hosting models in a single transaction. The funds will be sent to your connected wallet.
                       </p>
                     </div>
                   </div>
@@ -1967,37 +2055,54 @@ const DashboardPage = () => {
 
                 {/* Buttons */}
                 {!isWithdrawConfirmed && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setShowWithdrawModal(false);
-                        setTotalEarnings('0');
-                      }}
-                      disabled={isWithdrawWriting || isWithdrawConfirming}
-                      className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleWithdrawConfirm}
-                      disabled={isWithdrawWriting || isWithdrawConfirming}
-                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
-                    >
-                      {(isWithdrawWriting || isWithdrawConfirming) ? (
-                        <>
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          {isWithdrawWriting ? 'Signing...' : 'Confirming...'}
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <>
+                    {/* Show message if no unclaimed earnings */}
+                    {parseFloat(totalEarnings) === 0 && (
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
-                          Withdraw Now
-                        </>
-                      )}
-                    </button>
-                  </div>
+                          <p className="text-sm text-yellow-800">
+                            No unclaimed earnings available to withdraw at this time. Keep hosting to earn more!
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setShowWithdrawModal(false);
+                          setTotalEarnings('0');
+                        }}
+                        disabled={isWithdrawWriting || isWithdrawConfirming}
+                        className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={handleWithdrawConfirm}
+                        disabled={isWithdrawWriting || isWithdrawConfirming || parseFloat(totalEarnings) === 0}
+                        className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
+                        title={parseFloat(totalEarnings) === 0 ? 'No unclaimed earnings to withdraw' : ''}
+                      >
+                        {(isWithdrawWriting || isWithdrawConfirming) ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            {isWithdrawWriting ? 'Signing...' : 'Confirming...'}
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Withdraw Now
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </>
                 )}
 
                 {/* Success state after withdrawal */}
@@ -2014,7 +2119,7 @@ const DashboardPage = () => {
                       <span className="font-bold text-base">Withdrawal Successful! 🎉</span>
                     </div>
                     <p className="text-sm text-green-700 mb-3">
-                      Your earnings of {totalEarnings} 0G have been successfully withdrawn to your wallet!
+                      Your unclaimed earnings of {totalEarnings} 0G have been successfully withdrawn to your wallet!
                     </p>
                     <p className="text-xs text-gray-600">
                       This window will close automatically...
