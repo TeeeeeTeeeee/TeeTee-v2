@@ -13,7 +13,7 @@ import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
-import { useMintINFT, INFT_ABI, CONTRACT_ADDRESSES as INFT_ADDRESSES } from '../hooks/useINFT';
+// INFT minting and authorization is now handled by backend
 import { useRouter } from 'next/router';
 
 interface AddModelFormData {
@@ -145,13 +145,11 @@ const DashboardPage = () => {
   const { stopLLM, isWriting: isStopping, isConfirming: isStopConfirming, isConfirmed: isStopConfirmed, resetWrite: resetStopWrite } = useStopLLM();
   const { withdrawAll, isWriting: isWithdrawWriting, isConfirming: isWithdrawConfirming, isConfirmed: isWithdrawConfirmed, resetWrite: resetWithdrawWrite } = useWithdrawAll();
   
-  // INFT hooks for minting
-  const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
-  
-  // Backend authorization state
-  const [isAuthorizing, setIsAuthorizing] = useState(false);
-  const [isAuthConfirmed, setIsAuthConfirmed] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  // Backend mint & authorization state
+  const [isMintingAndAuthorizing, setIsMintingAndAuthorizing] = useState(false);
+  const [isMintAuthConfirmed, setIsMintAuthConfirmed] = useState(false);
+  const [mintAuthError, setMintAuthError] = useState<string | null>(null);
+  const [mintedTokenId, setMintedTokenId] = useState<number | null>(null);
   
   // Track if the claiming process has started (after user clicks button)
   const [hasStartedClaiming, setHasStartedClaiming] = useState(false);
@@ -357,9 +355,10 @@ const DashboardPage = () => {
       
       // Reset claiming state
       setHasStartedClaiming(false);
-      setIsAuthConfirmed(false);
-      setIsAuthorizing(false);
-      setAuthError(null);
+      setIsMintAuthConfirmed(false);
+      setIsMintingAndAuthorizing(false);
+      setMintAuthError(null);
+      setMintedTokenId(null);
       
       // Show claim modal
       setShowClaimINFTModal(true);
@@ -376,90 +375,7 @@ const DashboardPage = () => {
     }
   }, [isConfirmed, connectedAddress, registeredModelName]);
   
-  // Effect to handle successful INFT mint - then auto-authorize via backend
-  React.useEffect(() => {
-    const handleMintSuccess = async () => {
-      if (isMintConfirmed && connectedAddress) {
-        console.log('INFT minted, auto-authorizing user via backend...');
-        
-        setIsAuthorizing(true);
-        setAuthError(null);
-        
-        try {
-          // Get the current token ID counter from the contract
-          // IMPORTANT: getCurrentTokenId() returns the NEXT token to be minted
-          // After minting, the counter increments, so we subtract 1 to get the just-minted token
-          const currentCounter = await readContract(config, {
-            address: INFT_ADDRESSES.INFT as `0x${string}`,
-            abi: INFT_ABI,
-            functionName: 'getCurrentTokenId',
-            args: []
-          }) as bigint;
-          
-          // Calculate the just-minted token ID
-          // Counter starts at 1, after first mint it becomes 2
-          // So: counter=2 means token 1 was minted, counter=3 means token 2 was minted, etc.
-          let tokenId = Number(currentCounter) - 1;
-          
-          // Safety check: if counter is still 1, the contract might be old version
-          // In this case, assume it's the first token (ID 1) since the mint was confirmed
-          if (tokenId < 1) {
-            console.warn(`Counter is at ${currentCounter}, assuming first token (ID 1)`);
-            tokenId = 1;
-          }
-          
-          console.log('Minted INFT - Counter:', Number(currentCounter), '→ TokenId:', tokenId, 'for user:', connectedAddress);
-          
-          if (!connectedAddress) {
-            throw new Error('User address is not available');
-          }
-          
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
-          
-          const requestBody = {
-            tokenId: tokenId,
-            userAddress: connectedAddress
-          };
-          
-          console.log('Sending authorization request:', requestBody);
-          
-          const response = await fetch(`${backendUrl}/authorize-inft`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody)
-          });
-          
-          const data = await response.json();
-          
-          if (!response.ok || !data.success) {
-            throw new Error(data.error || 'Authorization failed');
-          }
-          
-          console.log('Authorization successful:', data.txHash);
-          setIsAuthConfirmed(true);
-          setIsAuthorizing(false);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Failed to authorize user:', errorMessage);
-          setAuthError(errorMessage);
-          setIsAuthorizing(false);
-        }
-      }
-    };
-    
-    handleMintSuccess();
-  }, [isMintConfirmed, connectedAddress, config]);
-  
-  // Effect to log successful authorization (no auto-close, user must click Close button)
-  React.useEffect(() => {
-    if (isAuthConfirmed) {
-      console.log('✅ Authorization confirmed! User can now close the modal.');
-    }
-  }, [isAuthConfirmed]);
-  
-  // Handle claiming INFT from modal
+  // Handle claiming INFT from modal - calls backend to mint then authorize in 2 steps
   const handleClaimINFT = async () => {
     if (!connectedAddress) {
       alert('Please connect your wallet first');
@@ -468,19 +384,97 @@ const DashboardPage = () => {
     
     // Mark that the claiming process has started
     setHasStartedClaiming(true);
+    setIsMintingAndAuthorizing(true);
+    setMintAuthError(null);
+    
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
     
     try {
+      // Step 1: Mint the INFT
+      console.log('Step 1: Minting INFT...');
+      
+      // Generate a proper metadata hash (not all zeros)
       const encryptedURI = '0g://storage/model-data-' + Date.now();
-      const metadataHash = '0x' + Array(64).fill('0').join('');
+      const hashInput = `${connectedAddress}-${encryptedURI}-${Date.now()}`;
+      const encoder = new TextEncoder();
+      const data = encoder.encode(hashInput);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const metadataHash = '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
       
-      const mintSuccess = await mintINFT(connectedAddress, encryptedURI, metadataHash);
+      const mintBody = {
+        userAddress: connectedAddress,
+        encryptedURI: encryptedURI,
+        metadataHash: metadataHash
+      };
       
-      if (mintSuccess) {
-        console.log('INFT claim initiated...');
+      const mintResponse = await fetch(`${backendUrl}/mint-inft`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(mintBody)
+      });
+      
+      const mintData = await mintResponse.json();
+      
+      if (!mintResponse.ok || !mintData.success) {
+        throw new Error(mintData.error || 'Mint failed');
       }
+      
+      console.log('✅ INFT minted!', mintData);
+      console.log('   Token ID:', mintData.tokenId);
+      console.log('   Mint Tx:', mintData.txHash);
+      
+      const tokenId = mintData.tokenId;
+      
+      // Safety check: Token IDs must be >= 1
+      if (!tokenId || tokenId < 1) {
+        console.error('Invalid token ID received from mint:', tokenId);
+        throw new Error(`Invalid token ID received: ${tokenId}. Expected >= 1`);
+      }
+      
+      setMintedTokenId(tokenId);
+      
+      // Wait for the transaction to settle on the blockchain
+      console.log('Waiting 5 seconds before authorization...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Step 2: Authorize the user
+      console.log('Step 2: Authorizing user...');
+      
+      const authBody = {
+        tokenId: tokenId,
+        userAddress: connectedAddress
+      };
+          
+      const authResponse = await fetch(`${backendUrl}/authorize-inft`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+        body: JSON.stringify(authBody)
+      });
+      
+      const authData = await authResponse.json();
+      
+      if (!authResponse.ok || !authData.success) {
+        throw new Error(authData.error || 'Authorization failed');
+      }
+      
+      console.log('✅ User authorized!', authData);
+      console.log('   Auth Tx:', authData.txHash);
+      
+      // Success - both operations completed
+      setIsMintAuthConfirmed(true);
+      setIsMintingAndAuthorizing(false);
+      
     } catch (error) {
-      console.error('Failed to claim INFT:', error);
-      setHasStartedClaiming(false); // Reset on error
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to mint/authorize INFT:', errorMessage);
+      setMintAuthError(errorMessage);
+      setIsMintingAndAuthorizing(false);
+      setHasStartedClaiming(false); // Reset so user can try again
     }
   };
 
@@ -1130,8 +1124,8 @@ const DashboardPage = () => {
             onCancel={resetJoinForm}
             isWriting={isWriting}
             isConfirming={isConfirming}
-            isMinting={isMinting}
-            isAuthorizing={isAuthorizing}
+            isMinting={false}
+            isAuthorizing={false}
             writeError={writeError}
             availableShard="shard2"
             existingShardUrl={existingShardUrl}
@@ -1164,8 +1158,8 @@ const DashboardPage = () => {
               onCancel={resetForm}
               isWriting={isWriting}
               isConfirming={isConfirming}
-              isMinting={isMinting}
-              isAuthorizing={isAuthorizing}
+              isMinting={false}
+              isAuthorizing={false}
               writeError={writeError}
             />
           </div>
@@ -1333,7 +1327,7 @@ const DashboardPage = () => {
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
             onClick={(e) => {
               // Prevent closing modal by clicking backdrop during minting/authorizing
-              if (!isMinting && !isAuthorizing) {
+              if (!isMintingAndAuthorizing) {
                 e.stopPropagation();
               }
             }}
@@ -1360,9 +1354,10 @@ const DashboardPage = () => {
                         setRegisteredModelName('');
                         setIsSecondHost(false);
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       className="text-white hover:text-violet-100 transition-colors"
                     >
@@ -1447,13 +1442,13 @@ const DashboardPage = () => {
                   {/* Single Step: Complete Process */}
                   <div className="flex items-start gap-3">
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
-                      isAuthConfirmed
+                      isMintAuthConfirmed
                         ? 'bg-green-500 border-green-500' 
                         : hasStartedClaiming
                         ? 'bg-violet-500 border-violet-500 animate-pulse' 
                         : 'bg-white border-violet-300'
                     }`}>
-                      {isAuthConfirmed ? (
+                      {isMintAuthConfirmed ? (
                         <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
@@ -1467,25 +1462,24 @@ const DashboardPage = () => {
                     </div>
                     <div className="flex-1">
                       <p className={`text-base font-semibold mb-1 ${
-                        isAuthConfirmed ? 'text-green-700' : hasStartedClaiming ? 'text-violet-700' : 'text-gray-800'
+                        isMintAuthConfirmed ? 'text-green-700' : hasStartedClaiming ? 'text-violet-700' : 'text-gray-800'
                       }`}>
-                        {isAuthConfirmed ? '✓ INFT Claimed Successfully!' : hasStartedClaiming ? 'Claiming Your INFT...' : 'Mint & Authorize INFT Token'}
+                        {isMintAuthConfirmed ? '✓ INFT Claimed Successfully!' : hasStartedClaiming ? 'Claiming Your INFT...' : 'Mint & Authorize INFT Token'}
                       </p>
                       <p className="text-xs text-gray-600 leading-relaxed">
-                        {isAuthConfirmed ? (
-                          'Your INFT has been minted and authorized. You can now use AI inference!'
+                        {isMintAuthConfirmed ? (
+                          <>
+                            Your INFT (#{mintedTokenId}) has been minted and authorized. You can now use AI inference!
+                          </>
                         ) : hasStartedClaiming ? (
                           <>
-                            {isMinting ? '⏳ Sign the transaction in your wallet...' : 
-                             !isMintConfirmed ? '⏳ Confirming transaction on blockchain...' :
-                             isAuthorizing ? '⏳ Auto-authorizing INFT access...' :
-                             '⏳ Processing...'}
+                            {isMintingAndAuthorizing ? '⏳ Minting INFT and authorizing access...' : '⏳ Processing...'}
                           </>
                         ) : (
                           <>
-                            • Mint your Intelligent NFT token<br />
-                            • Confirm transaction on blockchain<br />
-                            • Automatically authorize access
+                            • Backend mints your Intelligent NFT token<br />
+                            • Transaction confirmed on blockchain<br />
+                            • Automatically authorizes your access
                           </>
                         )}
                       </p>
@@ -1494,16 +1488,17 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Buttons */}
-                {!isAuthConfirmed && (
+                {!isMintAuthConfirmed && (
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
                         setShowClaimINFTModal(false);
                         setRegisteredModelName('');
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       disabled={hasStartedClaiming}
                       className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
@@ -1533,7 +1528,7 @@ const DashboardPage = () => {
                 )}
 
                 {/* Success state after authorization */}
-                {isAuthConfirmed && (
+                {isMintAuthConfirmed && (
                   <>
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -1547,7 +1542,7 @@ const DashboardPage = () => {
                         <span className="font-bold text-base">All Done! 🎉</span>
                       </div>
                       <p className="text-sm text-green-700 mb-3">
-                        Your INFT has been claimed and authorized successfully! You can now use AI inference in the Chat.
+                        Your INFT #{mintedTokenId} has been claimed and authorized successfully! You can now use AI inference in the Chat.
                       </p>
                       <button
                         onClick={() => {
@@ -1555,9 +1550,10 @@ const DashboardPage = () => {
                           setRegisteredModelName('');
                           setIsSecondHost(false);
                           setHasStartedClaiming(false);
-                          setIsAuthConfirmed(false);
-                          setIsAuthorizing(false);
-                          setAuthError(null);
+                          setIsMintAuthConfirmed(false);
+                          setIsMintingAndAuthorizing(false);
+                          setMintAuthError(null);
+                          setMintedTokenId(null);
                         }}
                         className="w-full px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                       >
@@ -1570,8 +1566,8 @@ const DashboardPage = () => {
                   </>
                 )}
 
-                {/* Error state if authorization fails */}
-                {authError && (
+                {/* Error state if mint/authorization fails */}
+                {mintAuthError && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1582,9 +1578,9 @@ const DashboardPage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div className="flex-1">
-                        <span className="font-semibold text-sm">Authorization Failed</span>
+                        <span className="font-semibold text-sm">Claim Failed</span>
                         <p className="text-xs text-red-700 mt-1">
-                          {authError}
+                          {mintAuthError}
                         </p>
                       </div>
                     </div>
@@ -1594,9 +1590,10 @@ const DashboardPage = () => {
                         setRegisteredModelName('');
                         setIsSecondHost(false);
                         setHasStartedClaiming(false);
-                        setIsAuthConfirmed(false);
-                        setIsAuthorizing(false);
-                        setAuthError(null);
+                        setIsMintAuthConfirmed(false);
+                        setIsMintingAndAuthorizing(false);
+                        setMintAuthError(null);
+                        setMintedTokenId(null);
                       }}
                       className="w-full px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center justify-center gap-2"
                     >
