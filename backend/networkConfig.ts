@@ -35,8 +35,8 @@ export const NETWORK_CONFIG = {
 // Generic INFTs from other contracts are automatically excluded
 export const CONTRACT_ADDRESSES = {
   testnet: {
-    INFT: '0xb056D1961fB5dD9E758dd0C97a96A00ffDfC5D9f', // Your specific INFT contract for free usage
-    DATA_VERIFIER: '0x8c932E8C3BdbC12196bA0DF6863E22e8C1B326A5`',
+    INFT: '0x58eA47cc625102585AE8EE0E2da262e9d7Bb4eB0', // Your specific INFT contract for free usage
+    DATA_VERIFIER: '0x12deF9560Bca2daa2A7744b6B56836aB006D8C73`',
     ORACLE_STUB: '0x99056b490D1f3ab062C0BeA16135b3F7Eaa8971a',
   },
   mainnet: {

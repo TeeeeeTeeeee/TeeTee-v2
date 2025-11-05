@@ -135,6 +135,13 @@ const DashboardPage = () => {
   const [stopHostNumber, setStopHostNumber] = useState<number | null>(null);
   const [isBothHostsForStop, setIsBothHostsForStop] = useState(false);
 
+  // Withdraw earnings modal state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [totalEarnings, setTotalEarnings] = useState<string>('0');
+
+  // Real-time ticker for hosting time
+  const [currentTime, setCurrentTime] = useState(Math.floor(Date.now() / 1000));
+
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
@@ -153,6 +160,15 @@ const DashboardPage = () => {
   
   // Track if the claiming process has started (after user clicks button)
   const [hasStartedClaiming, setHasStartedClaiming] = useState(false);
+
+  // Real-time ticker - updates every second
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(Math.floor(Date.now() / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch models hosted by the current user
   useEffect(() => {
@@ -543,8 +559,25 @@ const DashboardPage = () => {
     }
   }, [isStopConfirmed]);
 
-  // Handle withdraw all earnings - single transaction
-  const handleWithdrawAll = async () => {
+  // Handle withdraw all earnings - open modal
+  const handleWithdrawAllClick = () => {
+    if (!connectedAddress || myHostedModels.length === 0) return;
+    
+    // Calculate total earnings
+    const totalWei = myHostedModels.reduce((sum, m) => sum + Number(m.poolBalance), 0);
+    const totalOG = totalWei / 1e15;
+    const formattedEarnings = totalOG.toFixed(3);
+    
+    // Only open modal if earnings > 0
+    if (totalOG > 0) {
+      setTotalEarnings(formattedEarnings);
+      setShowWithdrawModal(true);
+    }
+    // If earnings are 0, do nothing
+  };
+
+  // Handle the actual withdrawal transaction
+  const handleWithdrawConfirm = async () => {
     if (!connectedAddress || myHostedModels.length === 0 || isWithdrawWriting) return;
     
     try {
@@ -555,10 +588,15 @@ const DashboardPage = () => {
     }
   };
   
-  // Auto-refetch data when withdrawal is confirmed
+  // Auto-refetch data when withdrawal is confirmed and close modal
   useEffect(() => {
     if (isWithdrawConfirmed) {
       refetchTotal();
+      // Close the modal after successful withdrawal
+      setTimeout(() => {
+        setShowWithdrawModal(false);
+        resetWithdrawWrite();
+      }, 2000); // Show success state for 2 seconds before closing
     }
   }, [isWithdrawConfirmed, refetchTotal]);
 
@@ -699,9 +737,8 @@ const DashboardPage = () => {
                     color: '#FFFFFF',
                     title: (() => {
                       const totalTime = myHostedModels.reduce((sum, m) => {
-                        const now = Math.floor(Date.now() / 1000);
-                        const time1 = Number(m.registeredAtHost1) > 0 ? now - Number(m.registeredAtHost1) : 0;
-                        const time2 = Number(m.registeredAtHost2 || 0n) > 0 ? now - Number(m.registeredAtHost2 || 0n) : 0;
+                        const time1 = Number(m.registeredAtHost1) > 0 ? currentTime - Number(m.registeredAtHost1) : 0;
+                        const time2 = Number(m.registeredAtHost2 || 0n) > 0 ? currentTime - Number(m.registeredAtHost2 || 0n) : 0;
                         return sum + time1 + time2;
                       }, 0);
                       return formatHostingTime(totalTime);
@@ -726,7 +763,7 @@ const DashboardPage = () => {
                     })(),
                     description: 'Total earned from hosting',
                     label: 'Earnings Total',
-                    onClick: () => handleWithdrawAll()
+                    onClick: () => handleWithdrawAllClick()
                   },
                   {
                     color: '#FFFFFF',
@@ -840,10 +877,9 @@ const DashboardPage = () => {
                               <span className="text-gray-500">Hosted (Shard 1):</span>
                               <span className="text-gray-700 text-xs">
                                 {(() => {
-                                  const now = Math.floor(Date.now() / 1000);
                                   const startTime = Number(model.registeredAtHost1);
                                   if (startTime === 0) return 'Not started';
-                                  return formatHostingTime(now - startTime);
+                                  return formatHostingTime(currentTime - startTime);
                                 })()}
                               </span>
                             </div>
@@ -851,10 +887,9 @@ const DashboardPage = () => {
                               <span className="text-gray-500">Hosted (Shard 2):</span>
                               <span className="text-gray-700 text-xs">
                                 {(() => {
-                                  const now = Math.floor(Date.now() / 1000);
                                   const startTime = Number(model.registeredAtHost2 || 0n);
                                   if (startTime === 0) return 'Not started';
-                                  return formatHostingTime(now - startTime);
+                                  return formatHostingTime(currentTime - startTime);
                                 })()}
                               </span>
                             </div>
@@ -864,12 +899,11 @@ const DashboardPage = () => {
                             <span className="text-gray-500">Hosting Time:</span>
                             <span className="text-gray-700 text-xs">
                               {(() => {
-                                const now = Math.floor(Date.now() / 1000);
                                 const startTime = isHost1 
                                   ? Number(model.registeredAtHost1)
                                   : Number(model.registeredAtHost2 || 0n);
                                 if (startTime === 0) return 'Not started';
-                                return formatHostingTime(now - startTime);
+                                return formatHostingTime(currentTime - startTime);
                               })()}
                             </span>
                           </div>
@@ -1762,6 +1796,191 @@ const DashboardPage = () => {
                     )}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Withdraw Earnings Modal */}
+        {showWithdrawModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={(e) => {
+              // Prevent closing modal by clicking backdrop during withdrawal
+              if (!isWithdrawWriting && !isWithdrawConfirming) {
+                e.stopPropagation();
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header with gradient */}
+              <div className="bg-gradient-to-r from-violet-400 to-purple-300 px-6 py-4 text-white sticky top-0 z-10">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <h2 className="text-xl font-bold">Withdraw Earnings</h2>
+                  </div>
+                  {!isWithdrawWriting && !isWithdrawConfirming && !isWithdrawConfirmed && (
+                    <button
+                      onClick={() => {
+                        setShowWithdrawModal(false);
+                        setTotalEarnings('0');
+                      }}
+                      className="text-white hover:text-violet-100 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                  {(isWithdrawWriting || isWithdrawConfirming) && (
+                    <div className="text-white opacity-50 cursor-not-allowed" title="Please wait for the transaction to complete">
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <p className="text-violet-100 text-sm">
+                  Claim your earnings from hosting models
+                </p>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                {/* Earnings Display */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-center p-6 bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg">
+                    <div className="text-center">
+                      <p className="text-sm text-gray-600 mb-1">Total Available Earnings</p>
+                      <p className="text-4xl font-bold text-violet-600">{totalEarnings} <span className="text-2xl">0G</span></p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="mb-4">
+                  <div className="flex items-start gap-2 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                    <svg className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <h3 className="font-semibold text-violet-900 mb-1">About Withdrawals</h3>
+                      <p className="text-sm text-violet-700">
+                        This will withdraw all your earnings from hosting models in a single transaction. The funds will be sent to your connected wallet.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Steps */}
+                {!isWithdrawConfirmed && (
+                  <div className="bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200 rounded-lg p-4 mb-4">
+                    <p className="text-xs font-semibold text-gray-700 mb-3">
+                      {!isWithdrawWriting && !isWithdrawConfirming ? 'What happens when you withdraw:' : 'Progress:'}
+                    </p>
+                    
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${
+                        isWithdrawWriting || isWithdrawConfirming
+                          ? 'bg-violet-500 border-violet-500 animate-pulse' 
+                          : 'bg-white border-violet-300'
+                      }`}>
+                        {(isWithdrawWriting || isWithdrawConfirming) ? (
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                        ) : (
+                          <svg className="w-5 h-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-base font-semibold mb-1 ${
+                          (isWithdrawWriting || isWithdrawConfirming) ? 'text-violet-700' : 'text-gray-800'
+                        }`}>
+                          {isWithdrawConfirming ? 'Confirming Transaction...' : isWithdrawWriting ? 'Waiting for Signature...' : 'Sign Transaction to Withdraw'}
+                        </p>
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          {(isWithdrawWriting || isWithdrawConfirming) ? (
+                            <>⏳ Processing withdrawal from all hosted models...</>
+                          ) : (
+                            <>
+                              • You'll be prompted to sign the transaction<br />
+                              • All earnings will be withdrawn at once<br />
+                              • Funds will be sent to your wallet
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Buttons */}
+                {!isWithdrawConfirmed && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setShowWithdrawModal(false);
+                        setTotalEarnings('0');
+                      }}
+                      disabled={isWithdrawWriting || isWithdrawConfirming}
+                      className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleWithdrawConfirm}
+                      disabled={isWithdrawWriting || isWithdrawConfirming}
+                      className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 text-sm"
+                    >
+                      {(isWithdrawWriting || isWithdrawConfirming) ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          {isWithdrawWriting ? 'Signing...' : 'Confirming...'}
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          Withdraw Now
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Success state after withdrawal */}
+                {isWithdrawConfirmed && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 bg-green-50 border-2 border-green-300 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2 text-green-800 mb-2">
+                      <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-bold text-base">Withdrawal Successful! 🎉</span>
+                    </div>
+                    <p className="text-sm text-green-700 mb-3">
+                      Your earnings of {totalEarnings} 0G have been successfully withdrawn to your wallet!
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      This window will close automatically...
+                    </p>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           </motion.div>
