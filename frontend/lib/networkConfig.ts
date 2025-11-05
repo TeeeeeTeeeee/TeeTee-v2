@@ -13,7 +13,7 @@ import type { Chain } from '@rainbow-me/rainbowkit';
 export type NetworkType = 'testnet' | 'mainnet';
 
 // 🎯 CHANGE THIS TO SWITCH NETWORKS (must match backend/networkConfig.ts)
-export const NETWORK_TYPE: NetworkType = 'testnet' as NetworkType;
+export const NETWORK_TYPE: NetworkType = 'mainnet' as NetworkType;
 
 // 0G Galileo Testnet Configuration
 export const galileoTestnet = {
@@ -64,9 +64,9 @@ export const CONTRACT_ADDRESSES = {
     MINE: '0xCd01c5Cd953971CE4C2c9bFb95610236a7F414fe',
     REWARD: '0x457aC76B58ffcDc118AABD6DbC63ff9072880870',
     // Add your deployed INFT contracts on mainnet here
-    INFT: process.env.NEXT_PUBLIC_MAINNET_INFT_ADDRESS || '',
-    DATA_VERIFIER: process.env.NEXT_PUBLIC_MAINNET_DATA_VERIFIER_ADDRESS || '',
-    ORACLE_STUB: process.env.NEXT_PUBLIC_MAINNET_ORACLE_STUB_ADDRESS || '',
+    INFT: process.env.NEXT_PUBLIC_MAINNET_INFT_ADDRESS || '0x56776a7878c7d4cC9943b17d91a3E098C77614da',
+    DATA_VERIFIER: process.env.NEXT_PUBLIC_MAINNET_DATA_VERIFIER_ADDRESS || '0x8889106de495dC1731a9b60A58817DE6E0142ac0',
+    ORACLE_STUB: process.env.NEXT_PUBLIC_MAINNET_ORACLE_STUB_ADDRESS || '0x20F8F585F8E0d3D1fCe7907A3C02AEaA5C924707',
   },
 };
 

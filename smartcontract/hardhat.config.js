@@ -12,7 +12,8 @@ const config = {
         enabled: true,
         runs: 200,
       },
-      viaIR: true, // Fix for "Stack too deep" error
+      evmVersion: "paris", // Explicitly set EVM version for verification
+      // viaIR: true, // Disabled - causes bytecode mismatch during verification
     },
   },
   networks: {
