@@ -9,7 +9,7 @@
 
 **Democratizing AI through secure, verifiable, and decentralized inference powered by Trusted Execution Environments**
 
-[Live Demo](https://teetee.site) • [Documentation](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Video Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573)
+[Live Demo](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Documentation](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Video Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573)
 
 🏆 **0G WaveHack Wave 5 Submission** | Production-Ready | Mainnet Deployed | Fully Verified
 
@@ -48,7 +48,9 @@
 ### Key Innovations
 
 - **🔐 TEE-Secured Inference**: All AI computations run in hardware-isolated Trusted Execution Environments, ensuring data privacy and tamper-proof execution
-- **⚡ 0G Network Integration**: Leverages 0G's high-performance storage (2GB/s) and mainnet smart contracts for on-chain authorization and credit management
+- **⚡ 0G Network Integration**: Leverages 0G's high-performance infrastructure:
+  - **0G Storage**: Model weights, chat history, and metadata stored at 2GB/s throughput (~$10/TB)
+  - **0G Chain**: On-chain authorization, credit management, and settlement (2,500+ TPS)
 - **💎 iNFT Token Standard**: Implements ERC-7857 for tokenized AI agent ownership with secure, privacy-preserving metadata transfer
 - **🏥 Auto-Failover System**: Health oracle continuously monitors shard status and automatically routes traffic to healthy endpoints
 - **💰 Credit-Based Economy**: Fair, transparent metering and settlement system for AI usage with verifiable on-chain transactions
@@ -66,65 +68,113 @@ All core contracts are deployed and verified on 0G mainnet:
 
 🔗 **Building Journey & Mainnet Deployment**: [Read our Twitter thread](https://x.com/ilovedahmo/status/1986064335354126573) documenting key milestones and deployment details.
 
+📄 **Research & White Paper**: [TeeTee Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) - Our self-researched approach to distributed LLM inference in TEE
+
 ---
 
 ## 🎯 Unique Selling Point (USP)
 
 ### What Makes TeeTee Stand Out in the 0G Ecosystem?
 
-**TeeTee is the first and only production-ready AI inference platform that combines hardware-level security (TEE), fully on-chain credit settlement, and intelligent failover—all optimized for 0G's high-performance infrastructure.**
+**TeeTee is the world's first implementation of layer-sharded LLM inference across distributed Trusted Execution Environments (TEE), backed by original research and deployed on 0G's high-performance infrastructure.**
 
-#### 1. **True Privacy-Preserving AI with TEE + 0G Storage**
-Unlike other AI platforms that claim decentralization but rely on centralized inference servers, TeeTee runs **100% of inference inside Trusted Execution Environments (TEE)**. This hardware-isolated compute ensures:
-- 🔒 **Zero Data Leakage**: Your prompts and model outputs never touch unencrypted memory
-- 🛡️ **Tamper-Proof Execution**: Even we (the platform operators) cannot access user data
-- ✅ **Cryptographic Verification**: Every inference can be proven to have executed in a genuine TEE
+#### 1. **First Implementation of LLM Sharding in TEE (Research-Backed)**
 
-Combined with **0G Storage's decentralized architecture**, we store model weights and metadata in a trustless, verifiable manner—making TeeTee the most secure AI platform in Web3.
+**The Problem:** Today's AI landscape forces a painful choice between **privacy vs. price**:
+- 🚨 Ship sensitive data to third-party LLMs (OpenAI, Anthropic) → **Zero privacy**
+- 💸 Self-host models on your own hardware → **$100K+ upfront** (GPUs, maintenance, ops)
+- 🤏 Most teams settle for smaller, weaker models due to cost constraints
+
+**Our Solution:** TeeTee introduces a **novel layer-sharding approach** where we split large language models by layers and distribute them across multiple verifiable TEEs:
+
+```
+Example: GPT-style 48-layer model
+├─ TEE Shard 1: Layers 1-12
+├─ TEE Shard 2: Layers 13-24
+├─ TEE Shard 3: Layers 25-36
+└─ TEE Shard 4: Layers 37-48
+```
+
+**How It Works:**
+- 🔗 **Request Flows Through TEE Chain**: Your query enters TEE1 → TEE2 → ... → TEEn
+- 🔐 **Zero Raw Data Exposure**: Only intermediate activations/tensors pass between shards (never raw text or weights)
+- ✅ **Hardware Attestation per Hop**: Each TEE emits cryptographic proof of secure execution
+- 🎯 **Single Entry Endpoint**: Orchestrator coordinates the chain; final output returns to you
+- 💰 **On-Chain Settlement**: Credits/payments settle automatically on 0G mainnet
+- 📦 **0G Storage Integration**: Model weights stored on 0G Storage's decentralized network (2GB/s throughput, ~$10/TB)
+- 💬 **Chat History on 0G**: Conversation logs and user context stored on 0G Storage for retrieval and continuity
+
+**Why This Matters:**
+- 🛡️ **Private Data Stays Private**: Verifiable TEE execution with no plaintext exposure
+- 📈 **Models Scale Beyond Single-TEE Limits**: Run 70B+ parameter models that won't fit in one TEE
+- 💵 **10x Cost Reduction**: Companies host just one shard (~$10K) yet access the full, high-quality model
+- 🌐 **Resilient & Decentralized**: No vendor lock-in, auto-failover, no single point of failure
+- 💾 **Cost-Effective Storage**: 0G Storage provides 10-100x cheaper storage vs. centralized alternatives
+- 🔬 **Research-Validated**: [Read our technical white paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) documenting our approach
+
+**Production Ready:** Unlike theoretical proposals, TeeTee is **live at [teetee.site](https://teetee.site)** with real models (DeepSeek V3, Llama 3.3) serving production traffic today.
+
+**🌐 Impact on 0G Ecosystem:**
+
+TeeTee's research-backed LLM sharding solves the "$100K GPU barrier" that blocks most companies from adopting private AI. By enabling **enterprise-grade AI privacy at consumer prices**, we're creating the **first killer use case** that drives real companies to 0G Network:
+
+- 📊 **Enterprise Demand**: Healthcare, legal, and financial companies need private AI but can't afford $100K+ GPU infrastructure. TeeTee makes them **0G users overnight**
+- 💰 **Storage Revenue**: Every TeeTee deployment stores gigabytes of model weights + chat history on **0G Storage**, creating sustained demand and revenue for 0G storage providers
+- ⛓️ **On-Chain Activity**: Every inference request = on-chain credit transaction on **0G Chain**, directly increasing network activity and TVL
+- 👥 **Developer Onboarding**: Our research proves decentralized AI works at production scale. Companies building with TeeTee **become 0G developers** (using 0G Storage SDK, 0G Chain contracts)
+- 🔄 **Network Effects**: As more shards join TeeTee, the network becomes more resilient and cost-effective, attracting more hosters → more storage → more on-chain settlement → **0G ecosystem growth**
+
+**Bottom Line:** TeeTee isn't just using 0G—we're the **gateway that brings enterprises to 0G** by solving a real pain point (privacy + cost) that Web2 AI platforms can't address.
+
+---
 
 #### 2. **ERC-7857 (iNFT) Implementation on 0G**
 TeeTee pioneers **Intelligent NFTs** on 0G Network, enabling:
 - 🎨 **AI Agent Ownership**: Tokenize and trade AI models as NFTs with embedded intelligence
 - 🔐 **Secure Metadata Transfer**: When an iNFT is sold, the AI model, memory, and traits transfer securely via oracle-assisted encryption
 - 💼 **New Economic Models**: Create AI agent marketplaces, rental systems, and royalty structures impossible with traditional NFTs
+- 📦 **0G Storage for AI Metadata**: Neural network weights, agent memory, and character traits stored on **0G Storage** with encryption
+- 🔄 **Decentralized Metadata Updates**: Dynamic AI agent evolution tracked and stored on 0G's decentralized infrastructure
 
 This positions TeeTee as the **infrastructure layer for the future AI agent economy** on 0G.
 
-#### 3. **Production-Grade Reliability with Auto-Failover**
-Most decentralized AI projects struggle with reliability. TeeTee solves this with:
-- 🏥 **Health Oracle**: Continuously monitors all TEE endpoints (every 30 seconds)
-- 🔄 **Automatic Failover**: Detects and routes around unhealthy shards in real-time
-- 📊 **Transparent SLAs**: On-chain proof of uptime and performance metrics
-- ⚡ **Sub-500ms Latency**: Optimized for 0G Chain's 2,500+ TPS and sub-second finality
+**🌐 Impact on 0G Ecosystem:**
 
-We're not just an experiment—**TeeTee is live, stable, and serving real traffic at [teetee.site](https://teetee.site)**.
+iNFTs unlock the **$100B+ AI agent market** for 0G by making AI models tradable, ownable assets—a use case impossible on traditional chains without 0G's high-performance storage:
 
-#### 4. **Developer-First with OpenAI-Compatible API**
-TeeTee is **drop-in compatible** with OpenAI's API, meaning:
-- 🚀 **Zero Migration Cost**: Change one line of code to switch from OpenAI to TeeTee
-- 📚 **Familiar Interface**: Use existing tools, libraries, and workflows
-- 🌐 **Web3-Native**: Built-in wallet support, on-chain credit management, and gasless transactions
+- 🛒 **AI Marketplaces on 0G**: Companies building AI agent marketplaces (like OpenSea for AI models) **must use 0G Storage** to handle gigabyte-sized neural network files at affordable costs (~$10/TB vs. $1000+/TB on centralized storage)
+- 🏢 **Enterprise Licensing**: B2B AI companies can now sell/license their models as iNFTs. Each sale = metadata stored on **0G Storage** + ownership transfer on **0G Chain** = sustained network usage
+- 💎 **NFT Ecosystem Expansion**: Traditional NFT projects (PFPs, gaming) can now embed AI agents into their tokens. A gaming NFT with embedded AI personality = model weights on **0G Storage** = new use case driving 0G adoption
+- 🤖 **Autonomous AI Agents**: Future DAOs and autonomous agents need on-chain identity. TeeTee's iNFT standard becomes the **de facto choice** for AI agent identity on 0G, creating a moat
+- 📈 **Storage & Compute Growth**: Every iNFT mint/transfer = metadata operations on 0G Storage + oracle verification on 0G Chain = **direct revenue for 0G validators and storage providers**
 
-This makes TeeTee the **easiest onboarding path** for Web2 developers entering the 0G ecosystem.
+**Bottom Line:** iNFTs make 0G the **home for the AI agent economy**. Companies building AI marketplaces, licensing platforms, or autonomous agents will choose 0G because TeeTee proves the infrastructure works at scale.
 
-#### 5. **Fair, Transparent Credit Economy**
-Unlike opaque subscription models, TeeTee uses:
+---
+
+#### 3. **Fair, Transparent Credit Economy**
+Unlike opaque subscription models or centralized billing, TeeTee uses:
 - 💰 **Pay-Per-Token**: Only pay for what you use, down to the token level
-- 📊 **On-Chain Verification**: Every credit transaction is verifiable on 0G mainnet
-- 🎁 **Hoster Incentives**: Model hosters earn directly from usage with automated settlements
-- 🔓 **No Lock-In**: Credits are portable and can be withdrawn anytime
+- 📊 **On-Chain Verification**: Every credit transaction is verifiable on **0G Chain mainnet** with full transparency
+- 🎁 **Hoster Incentives**: Model hosters earn directly from usage with automated settlements on **0G Chain**
+- 🔓 **No Lock-In**: Credits are portable and can be withdrawn anytime via **0G Chain** smart contracts
+- 👥 **Auto-Profit Sharing**: When users query your hosted shard, you earn instantly—settled on-chain
+- 💳 **Usage Logs on 0G Storage**: Every query, token count, and payment is logged to **0G Storage** for auditing and dispute resolution
 
-Our credit system aligns incentives between users, hosters, and the platform—**creating a sustainable, decentralized AI economy**.
+Our credit system aligns incentives between users, hosters, and the platform—**creating a sustainable, decentralized AI economy** where anyone can participate.
 
-#### 6. **Battle-Tested with Real-World Usage**
-TeeTee completed **0G WaveHack Wave 5** with:
-- ✅ **Mainnet Deployment**: All core contracts live on 0G mainnet
-- ✅ **Production Dapp**: Fully functional UI at [teetee.site](https://teetee.site)
-- ✅ **Full Test Coverage**: Unit + integration tests across contracts, oracle, and frontend
-- ✅ **Verified Contracts**: All addresses published and verified on 0G Chainscan
-- ✅ **Public Documentation**: Hosting guides, FAQs, and API references
+**🌐 Impact on 0G Ecosystem:**
 
-We're not vaporware—**TeeTee is live, audited, and ready to scale**.
+TeeTee's transparent credit economy creates **high-frequency on-chain activity** and drives enterprise adoption by solving AI's biggest pain point: unpredictable costs and vendor lock-in:
+
+- ⛓️ **Thousands of Daily Transactions**: Every AI inference = on-chain credit deduction on **0G Chain**. With 1M+ queries/day (our 2025 target), that's **1M+ on-chain transactions daily** = sustained network activity and gas revenue
+- 🏦 **Enterprise Budget Clarity**: CFOs hate unpredictable AI bills. TeeTee's pay-per-token model with on-chain auditing solves this. Companies that adopt TeeTee for cost transparency **become 0G Chain users by default**
+- 💰 **Hoster Economy**: Anyone can host a shard and earn. A university hosting one shard earns passive income when researchers use it → **0G becomes the platform where academic institutions monetize their compute**
+- 📈 **TVL Growth**: Credits are purchased and staked on **0G Chain**. As TeeTee scales to 50K users (2025 target), millions in credits lock into 0G smart contracts = **direct TVL growth**
+- 🔄 **Usage Data = 0G Storage Revenue**: Every query's token count, cost, and metadata logged to **0G Storage** for compliance and auditing. Enterprise customers need these logs for SOC2/ISO compliance → **sustained storage revenue**
+- 🌍 **Global Micropayments**: TeeTee enables researchers in developing countries to access AI for pennies. This **global accessibility** showcases 0G's low fees and fast settlement—a killer demo for enterprise onboarding
+
+**Bottom Line:** TeeTee's credit economy transforms 0G from "another L1" into **the global settlement layer for AI payments**. Every company adopting TeeTee = company using 0G Chain daily for real business operations.
 
 ---
 
@@ -900,6 +950,7 @@ We welcome contributions from the community! TeeTee is an open-source project, a
 ### 🔗 Links
 
 - **🌐 Live App**: [https://teetee.site](https://teetee.site)
+- **📄 Technical White Paper**: [LLM Sharding in TEE Research](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0)
 - **📖 Documentation**: [Comprehensive Guide](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing)
 - **🎥 Demo Video**: [TeeTee Wave 5 Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
 - **🐦 Twitter Thread**: [Building Journey & Mainnet Deployment](https://x.com/ilovedahmo/status/1986064335354126573)
@@ -932,7 +983,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 **Built with ❤️ by the TeeTee Team**
 
-[Website](https://teetee.site) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
+[Website](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
 
 **Tag us**: @0G_Builders @akindo_io
 
