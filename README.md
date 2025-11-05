@@ -286,36 +286,132 @@ TeeTee is built on a modular, full-stack architecture consisting of five core co
 
 ---
 
-### Architecture Diagram
+### Architecture Diagrams & Flow
 
+TeeTee's architecture consists of three interconnected flows:
+
+- **🟣 Purple: Platform (TeeTee) Flow** - Core infrastructure and shard management
+- **🔴 Red: Host Flow** - Model hosting and TEE deployment
+- **🔵 Teal: User Flow** - End-user inference and payments
+
+---
+
+#### Complete Architecture Overview
+
+![TeeTee Architecture](./images/TeeTeeArchitecture.png)
+
+**The complete system architecture showing all components and their interactions:**
+- **INFT Management**: Minting, authorization, and ownership on 0G Chain
+- **Smart Contract Layer**: Credit management and on-chain settlements
+- **Oracle System**: Health monitoring, TEE status verification, and inference routing
+- **0G Storage**: Decentralized storage for model weights, chat history, and metadata
+- **TEE Hosts**: Trusted Execution Environment nodes running model shards
+- **User Interface**: Frontend for queries, Console for management, and Dashboard for analytics
+
+---
+
+#### 🟣 Platform Flow: Shard Publishing & Registry
+
+**1. Publish Shard Artifacts (Platform Operation)**
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Console    │  │   Models     │  │   Hoster Dashboard   │  │
-│  │  (Add LLMs)  │  │ (Marketplace)│  │  (Earnings/Status)   │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    Backend Oracle Service                        │
-│  ┌────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ Health Checker │  │  Shard Registry │  │ Inference Router│  │
-│  │   (Failover)   │  │   (Validation)  │  │  (Load Balance) │  │
-│  └────────────────┘  └─────────────────┘  └─────────────────┘  │
-└───────────┬─────────────────────┬──────────────────┬────────────┘
-            │                     │                  │
-            ▼                     ▼                  ▼
-┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│  Smart Contracts │   │    0G Storage    │   │   TEE Hosts      │
-│   (0G Mainnet)   │   │  (Decentralized) │   │ (Phala Cloud)    │
-│                  │   │                  │   │                  │
-│ • creditUse.sol  │   │ • Model Data     │   │ • DeepSeek V3    │
-│ • subscription   │   │ • Metadata       │   │ • Llama 3.3      │
-│ • INFT (ERC-7857)│   │ • Health Logs    │   │ • Qwen, GPT-OSS  │
-└──────────────────┘   └──────────────────┘   └──────────────────┘
+Package Shards → Upload to 0G Storage → Record Hash on 0G Chain → Link to iNFT
 ```
+
+- **Package Each Shard**: Split model by layers (e.g., Layers 1-11, Layers 12-22)
+- **Upload to 0G Storage**: Store sharded model weights on decentralized storage
+- **Record Content Hash**: Register storage URI in registry contract on 0G Chain
+- **Link to iNFT Metadata**: iNFT metadata points to uploaded LLM shard location on 0G Storage
+
+This ensures deterministic, verifiable model deployment across the network.
+
+---
+
+#### 🔴 Host Flow: Onboarding & Deployment
+
+![User and Host Flow](./images/TeeTeeUserAndHostFlow.png)
+
+**1. Host Onboarding with iNFT Minting**
+- Host mints or receives an iNFT pointing to shard's encrypted metadata
+- iNFT contains storage location on 0G Storage
+- Ownership tracked on 0G Chain via ERC-7857
+
+**2. Secure Retrieval & TEE Provisioning**
+- Host's TEE-backed node fetches shard from 0G Storage
+- Node loads model weights into secure TEE environment
+- Exposes `/generate` and `/process` endpoints
+- Registers endpoint URL and shard hash on 0G Chain
+
+**3. Activation & Verification**
+- Oracle validates deployed shard hash matches iNFT metadata
+- Confirms node is reachable and serving (health check)
+- On success: Oracle activates iNFT and enables revenue sharing
+- On failure: Access blocked until hash/endpoint issues resolved
+
+**4. Monitoring & Lifecycle**
+- Oracle performs periodic health checks (endpoint liveness)
+- If node goes offline or hash mismatches → access suspended
+- Traffic automatically rerouted to healthy providers
+- iNFTs can be deactivated/rotated on operator changes or upgrades
+
+**Host Benefits:**
+- **Direct Access**: Hosts whitelisted for cost-free access to their own nodes
+- **Auto-Profit Sharing**: Earn when others use your shard
+- **Register for LLM Nodes**: Join existing models to earn passive income
+
+---
+
+#### 🔵 User Flow: Payments & Inference
+
+**1. Payments & Access**
+- Users pay credits into smart contract on 0G Chain (0.001 0G = 200 credits)
+- Contract meters requests based on token usage
+- Settles payments with providers via 0G Compute Network (permissionless)
+- All transactions verifiable on-chain
+
+**2. Query Relay & Inference**
+
+![Response Passing Between TEE Shards](./images/TeeTeeResponsePassing.png)
+
+**Layer-Sharded Inference Flow:**
+```
+User Query → TEE 1 (Layers 1-11) → TEE 2 (Layers 12-22) → ... → TEE N → Response
+```
+
+- **Lightweight Relayer**: Oracle service watches on-chain events and routes requests
+- **Distributed Processing**: Query flows through multiple TEE shards
+  - Each shard processes its assigned layers
+  - Only intermediate activations/tensors pass between TEEs (never raw text or weights)
+  - Each hop emits hardware attestation for verification
+- **Single Entry Endpoint**: Orchestrator coordinates the entire chain
+- **Final Output**: Assembled response returns to user
+- **On-Chain Settlement**: Credits/payments settle automatically on 0G mainnet
+- **Proof Anchoring**: Attestation references stored on-chain for auditability
+
+**Key Security Features:**
+- 🔒 **Zero Raw Data Exposure**: Only tensors pass between shards
+- ✅ **Hardware Attestation**: Each TEE proves secure execution
+- 🛡️ **Verifiable Compute**: Cryptographic proof at every hop
+
+**3. Logs & Transcripts**
+- User chat history persisted to 0G Storage for privacy
+- Request metadata stored for auditing
+- Retrieval for conversation continuity
+- All data encrypted and owned by user
+
+---
+
+#### Cost Advantages
+
+**Traditional Approach:**
+- Single entity hosts entire model: $100K+ upfront (GPUs + infrastructure)
+- High maintenance costs, single point of failure
+
+**TeeTee's Sharded Approach:**
+- Companies host just **one shard** (~$10K investment)
+- Access full, high-quality model via the network
+- 10x cost reduction while maintaining privacy
+- Earn revenue when others use your shard
+- Resilient and decentralized (no vendor lock-in)
 
 ---
 
@@ -985,7 +1081,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 [Website](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
 
-**Tag us**: @0G_Builders @akindo_io
 
 </div>
 
