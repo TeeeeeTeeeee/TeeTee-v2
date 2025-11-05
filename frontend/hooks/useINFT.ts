@@ -107,6 +107,13 @@ export const INFT_ABI = [
     "stateMutability": "view",
     "type": "function"
   },
+  {
+    "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
+    "name": "tokensOfOwner",
+    "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
 ]
 
 /**
@@ -289,6 +296,59 @@ export function useCheckINFTAuthorization(
   return {
     isAuthorized: !!isAuthorized,
     contractAddress: CONTRACT_ADDRESSES.INFT, // The specific INFT contract address being checked
+    refetch,
+  }
+}
+
+/**
+ * Custom hook to automatically find user's INFT and check if it's authorized
+ * 
+ * This hook:
+ * 1. Queries tokensOfOwner to find all INFTs owned by the user
+ * 2. Checks if the first INFT (users typically have one) is authorized
+ * 3. Returns authorization status
+ * 
+ * IMPORTANT: This only checks INFTs from the specific contract address 
+ * defined in networkConfig.ts (CONTRACT_ADDRESSES.INFT).
+ */
+export function useCheckUserINFTAuthorization(userAddress?: string) {
+  // First, get all tokens owned by the user
+  const { data: userTokenIds, refetch: refetchTokens } = useReadContract({
+    address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
+    abi: INFT_ABI,
+    functionName: 'tokensOfOwner',
+    args: userAddress ? [userAddress as `0x${string}`] : undefined,
+    query: {
+      enabled: !!userAddress,
+    },
+  })
+
+  // Get the first token ID (if user has any)
+  const tokenId = userTokenIds && Array.isArray(userTokenIds) && userTokenIds.length > 0 
+    ? Number(userTokenIds[0]) 
+    : null
+
+  // Check if that token is authorized
+  const { data: isAuthorized, refetch: refetchAuth } = useReadContract({
+    address: CONTRACT_ADDRESSES.INFT as `0x${string}`,
+    abi: INFT_ABI,
+    functionName: 'isAuthorized',
+    args: userAddress && tokenId ? [BigInt(tokenId), userAddress as `0x${string}`] : undefined,
+    query: {
+      enabled: !!userAddress && tokenId !== null,
+    },
+  })
+
+  const refetch = async () => {
+    await refetchTokens()
+    await refetchAuth()
+  }
+
+  return {
+    isAuthorized: !!isAuthorized,
+    tokenId, // The user's INFT token ID (null if they don't own any)
+    hasINFT: tokenId !== null, // Whether user owns an INFT
+    contractAddress: CONTRACT_ADDRESSES.INFT,
     refetch,
   }
 }

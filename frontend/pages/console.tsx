@@ -438,11 +438,17 @@ const DashboardPage = () => {
         throw new Error(mintData.error || 'Mint failed');
       }
       
-      console.log('✅ INFT minted!', mintData);
-      console.log('   Token ID:', mintData.tokenId);
-      console.log('   Mint Tx:', mintData.txHash);
-      
       const tokenId = mintData.tokenId;
+      
+      // Check if user already owned an INFT
+      if (mintData.alreadyOwned) {
+        console.log('✅ User already has INFT #' + tokenId);
+        console.log('   No minting needed - proceeding with authorization');
+      } else {
+        console.log('✅ INFT minted!', mintData);
+        console.log('   Token ID:', tokenId);
+        console.log('   Mint Tx:', mintData.txHash);
+      }
       
       // Safety check: Token IDs must be >= 1
       if (!tokenId || tokenId < 1) {
@@ -452,9 +458,11 @@ const DashboardPage = () => {
       
       setMintedTokenId(tokenId);
       
-      // Wait for the transaction to settle on the blockchain
-      console.log('Waiting 5 seconds before authorization...');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      // Wait for the transaction to settle on the blockchain (only if newly minted)
+      if (!mintData.alreadyOwned) {
+        console.log('Waiting 5 seconds before authorization...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
       
       // Step 2: Authorize the user
       console.log('Step 2: Authorizing user...');
@@ -545,10 +553,39 @@ const DashboardPage = () => {
     }
   };
 
-  // Effect to handle successful stop
+  // Effect to handle successful stop - deauthorize INFT
   React.useEffect(() => {
-    if (isStopConfirmed) {
-      console.log('Successfully stopped hosting LLM');
+    const handleDeauthorization = async () => {
+      if (!isStopConfirmed || !connectedAddress) return;
+      
+      console.log('Successfully stopped hosting LLM - deauthorizing INFT...');
+      
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+      
+      try {
+        // Backend will automatically find the user's INFT from this contract
+        const deauthResponse = await fetch(`${backendUrl}/deauthorize-inft`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userAddress: connectedAddress
+          })
+        });
+        
+        const deauthData = await deauthResponse.json();
+        
+        if (deauthResponse.ok && deauthData.success) {
+          console.log('✅ INFT deauthorized successfully!', deauthData);
+        } else {
+          console.warn('⚠️ INFT deauthorization failed:', deauthData.error);
+        }
+      } catch (error) {
+        console.error('❌ Failed to deauthorize INFT:', error);
+      }
+      
+      // Close modal and reset state
       setShowStopModal(false);
       setStopModelId(null);
       setStopModelName('');
@@ -556,8 +593,10 @@ const DashboardPage = () => {
       setIsBothHostsForStop(false);
       resetStopWrite();
       refetchTotal();
-    }
-  }, [isStopConfirmed]);
+    };
+    
+    handleDeauthorization();
+  }, [isStopConfirmed, connectedAddress]);
 
   // Handle withdraw all earnings - open modal
   const handleWithdrawAllClick = () => {
@@ -1710,6 +1749,7 @@ const DashboardPage = () => {
                           <li>Any pending rewards will be paid out</li>
                           <li>Your hosting slot will be cleared</li>
                           <li>The model may become incomplete if you're the only host</li>
+                          <li><strong>Your INFT access will be revoked - you'll need to host again to regain access</strong></li>
                         </ul>
                       </div>
                     </div>

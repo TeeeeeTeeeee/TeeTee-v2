@@ -18,7 +18,7 @@ import {
 } from '@/lib/contracts/creditUse';
 import { useGetTotalLLMs } from '@/lib/contracts/creditUse/reads/useGetTotalLLMs';
 import { useInference } from '../hooks/useInference';
-import { useCheckINFTAuthorization } from '../hooks/useINFT';
+import { useCheckUserINFTAuthorization } from '../hooks/useINFT';
 import { Navbar } from '@/components/Navbar';
 import ABI from '../utils/abi.json';
 import { CONTRACT_ADDRESS } from '../utils/address';
@@ -107,11 +107,9 @@ const ChatPage = () => {
   const { infer: runINFTInference, isInferring: isINFTInferring } = useInference();
   
   // Check if user has INFT authorization
-  // Only INFTs from the specific contract address in networkConfig.ts are recognized
+  // Automatically finds the user's INFT from the specific contract address in networkConfig.ts
   // Generic INFTs from other contracts are automatically excluded
-  // Using tokenId 1 (INFT tokens start at 1, separate from 0-based LLM array)
-  const { isAuthorized: hasINFT, contractAddress: inftContractAddress, refetch: refetchINFT } = useCheckINFTAuthorization(
-    1, 
+  const { isAuthorized: hasINFT, tokenId: userINFTTokenId, hasINFT: ownsINFT, contractAddress: inftContractAddress, refetch: refetchINFT } = useCheckUserINFTAuthorization(
     address
   );
   
@@ -588,7 +586,13 @@ const ChatPage = () => {
       }
       
       // Use INFT inference with selected model ID (0-based for LLM array)
-      const inferenceResult = await runINFTInference(modelId, message, address);
+      // Pass useINFTInference flag to tell backend whether to check INFT authorization
+      // IMPORTANT: Force credit mode if user doesn't have INFT (even if toggle is checked)
+      const shouldUseINFT = hasINFT && useINFTInference;
+      
+      console.log(`Actual mode: ${shouldUseINFT ? 'INFT mode (free)' : 'Credit mode (paid)'}`);
+      
+      const inferenceResult = await runINFTInference(modelId, message, address, shouldUseINFT);
       
       const text = inferenceResult?.output || 'No response from INFT';
       const aiMessage: Message = { id: Date.now() + 1, text, isUser: false, timestamp: new Date() };
@@ -608,9 +612,20 @@ const ChatPage = () => {
       await autoSaveToStorage(updatedMessages);
     } catch (err: any) {
       console.error('INFT Inference error:', err);
+      
+      // Check if error is about deauthorization
+      const errorMessage = err?.message || 'Unknown error';
+      let displayMessage = `Error: ${errorMessage}`;
+      
+      if (errorMessage.includes('not authorized') || errorMessage.includes('deauthorized')) {
+        displayMessage = '🔒 Your INFT is not authorized. Please host a model on the Console to get authorization.';
+      } else if (errorMessage.includes("don't have an INFT")) {
+        displayMessage = '📋 You need an INFT to use this feature. Host a model on the Console to get one!';
+      }
+      
       setMessages(prev => prev.concat({ 
         id: Date.now() + 1, 
-        text: `Error from INFT: ${err?.message || 'Unknown error'}. Please ensure you are authorized for the INFT token.`, 
+        text: displayMessage, 
         isUser: false, 
         timestamp: new Date() 
       }));
@@ -736,7 +751,7 @@ const ChatPage = () => {
               <span className="text-xs text-gray-700 font-medium flex-1">
                 Use hosted INFT
                 <span className="block text-[10px] text-gray-500 font-normal">
-                  {hasINFT ? '(No Tokens Used)' : '(You don\'t have a hosted model)'}
+                  {hasINFT ? '(No Tokens Used)' : ownsINFT ? '(Not Authorized - Host a model)' : '(You don\'t have an INFT)'}
                 </span>
               </span>
             </label>

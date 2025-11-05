@@ -9,6 +9,7 @@ export interface InferenceRequest {
   tokenId: number
   input: string
   user?: string
+  useINFT?: boolean  // Flag to indicate if INFT authorization should be checked
 }
 
 export interface InferenceResponse {
@@ -43,7 +44,8 @@ export interface StreamingCallback {
 export async function runInference(
   tokenId: number,
   input: string,
-  userAddress?: string
+  userAddress?: string,
+  useINFT: boolean = false
 ): Promise<InferenceResponse> {
   if (!input) {
     throw new Error('Input is required')
@@ -72,6 +74,7 @@ export async function runInference(
         tokenId: numericTokenId,
         input,
         user: userAddress,
+        useINFT: useINFT,
       }),
     })
 
@@ -100,7 +103,8 @@ export async function runStreamingInference(
   tokenId: number,
   input: string,
   userAddress: string | undefined,
-  callbacks: StreamingCallback
+  callbacks: StreamingCallback,
+  useINFT: boolean = false
 ): Promise<void> {
   if (!input) {
     throw new Error('Input is required')
@@ -132,6 +136,7 @@ export async function runStreamingInference(
         tokenId: numericTokenId,
         input,
         user: userAddress,
+        useINFT: useINFT,
       }),
     })
 

@@ -301,6 +301,25 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
         }
     }
     
+    /**
+     * @dev Contract owner can revoke usage for any token (for backend automation)
+     * @param tokenId Token ID to revoke authorization for
+     * @param user Address to revoke authorization from
+     * 
+     * This allows the contract owner (backend) to revoke users' authorization
+     * without needing to be the token owner or approved.
+     */
+    function ownerRevokeUsage(uint256 tokenId, address user) external onlyOwner {
+        _requireOwned(tokenId); // Verify token exists
+        
+        uint64 currentEpoch = authEpoch[tokenId];
+        // Only revoke if user is currently authorized
+        if (userAuthEpoch[tokenId][user] == currentEpoch && currentEpoch != 0) {
+            userAuthEpoch[tokenId][user] = 0; // Set to 0 to revoke
+            emit AuthorizedUsage(tokenId, user, false);
+        }
+    }
+    
     // ================================
     // ERC-7857 VIEW FUNCTIONS
     // ================================
@@ -489,5 +508,35 @@ contract INFT is ERC721, Ownable, ReentrancyGuard {
      */
     function getCurrentTokenId() external view returns (uint256) {
         return _tokenIdCounter;
+    }
+    
+    /**
+     * @dev Get all token IDs owned by a specific address
+     * @param owner The address to query
+     * @return An array of token IDs owned by the address
+     * 
+     * Note: This function iterates through all minted tokens, so it can be gas-intensive
+     * for contracts with many tokens. Use for read-only queries.
+     */
+    function tokensOfOwner(address owner) external view returns (uint256[] memory) {
+        require(owner != address(0), "Query for zero address");
+        
+        uint256 tokenCount = balanceOf(owner);
+        if (tokenCount == 0) {
+            return new uint256[](0);
+        }
+        
+        uint256[] memory result = new uint256[](tokenCount);
+        uint256 resultIndex = 0;
+        
+        // Iterate through all possible token IDs
+        for (uint256 tokenId = 1; tokenId < _tokenIdCounter && resultIndex < tokenCount; tokenId++) {
+            if (_ownerOf(tokenId) == owner) {
+                result[resultIndex] = tokenId;
+                resultIndex++;
+            }
+        }
+        
+        return result;
     }
 }
