@@ -51,14 +51,19 @@ const INFT_ABI = [
   "function metadataHash(uint256 tokenId) view returns (bytes32)",
   "function authorizeUsage(uint256 tokenId, address user)",
   "function ownerAuthorizeUsage(uint256 tokenId, address user)",
+  "function revokeUsage(uint256 tokenId, address user)",
+  "function ownerRevokeUsage(uint256 tokenId, address user)",
   "function mint(address to, string encryptedURI, bytes32 metadataHash) returns (uint256)",
-  "function getCurrentTokenId() view returns (uint256)"
+  "function getCurrentTokenId() view returns (uint256)",
+  "function tokensOfOwner(address owner) view returns (uint256[])",
+  "function balanceOf(address owner) view returns (uint256)"
 ];
 
 interface InferRequest {
   tokenId: number;
   input: string;
   user?: string;
+  useINFT?: boolean; // Flag to indicate if INFT authorization should be checked
 }
 
 interface InferResponse {
@@ -466,6 +471,9 @@ class INFTOracleService {
     // Auto-authorize INFT endpoint (owner only)
     this.app.post('/authorize-inft', this.handleAuthorizeINFT.bind(this));
 
+    // Deauthorize INFT endpoint (owner only)
+    this.app.post('/deauthorize-inft', this.handleDeauthorizeINFT.bind(this));
+
     // Mint INFT endpoint (owner only)
     this.app.post('/mint-inft', this.handleMintINFT.bind(this));
     
@@ -557,32 +565,58 @@ class INFTOracleService {
 
       console.log(`[${requestId}] Processing inference for model ${request.tokenId}`);
 
-      // Check INFT authorization (always check token 1 - the first INFT)
-      // Note: request.tokenId is the MODEL ID (0-based), not INFT token ID
-      const inftTokenId = 1; // Always use INFT token 1 for authorization
+      // Check INFT authorization ONLY if useINFT flag is true (user wants free INFT access)
+      const useINFT = request.useINFT === true;
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
-      let owner: string;
-      let isAuthorized: boolean;
+      let isAuthorized: boolean = false;
+      let inftTokenId: number | null = null;
       
-      try {
-        owner = await this.inftContract.ownerOf(inftTokenId);
-        isAuthorized = await this.inftContract.isAuthorized(inftTokenId, userAddress);
-        console.log(`[${requestId}] INFT token ${inftTokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
-      } catch (error) {
-        console.error(`[${requestId}] INFT token ${inftTokenId} does not exist or error checking:`, error);
-        res.status(404).json({
-          success: false,
-          error: `INFT token #${inftTokenId} does not exist. Please mint an INFT first.`
-        });
-        return;
-      }
+      if (useINFT) {
+        console.log(`[${requestId}] INFT mode enabled - checking authorization...`);
+        
+        // Note: request.tokenId is the MODEL ID (0-based), not INFT token ID
+        let userTokenIds: bigint[];
+        
+        try {
+          // Find all INFTs owned by this user
+          userTokenIds = await this.inftContract.tokensOfOwner(userAddress);
+          console.log(`[${requestId}] User ${userAddress} owns ${userTokenIds.length} INFT(s):`, userTokenIds.map(id => id.toString()));
+          
+          if (userTokenIds.length === 0) {
+            console.log(`[${requestId}] User has no INFT - access denied`);
+            res.status(403).json({
+              success: false,
+              error: `You don't have an INFT. Please host a model on the Console to get one.`
+            });
+            return;
+          }
+          
+          // Check if the first INFT (users typically have one) is authorized
+          inftTokenId = Number(userTokenIds[0]);
+          isAuthorized = await this.inftContract.isAuthorized(inftTokenId, userAddress);
+          console.log(`[${requestId}] INFT token #${inftTokenId} authorization status: ${isAuthorized}`);
+          
+        } catch (error) {
+          console.error(`[${requestId}] Error checking INFT authorization:`, error);
+          res.status(500).json({
+            success: false,
+            error: `Failed to check INFT authorization. Please try again.`
+          });
+          return;
+        }
 
-      if (!isAuthorized) {
-        res.status(403).json({
-          success: false,
-          error: `Access denied. You are not authorized to use INFT #${inftTokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}`
-        });
-        return;
+        if (!isAuthorized) {
+          res.status(403).json({
+            success: false,
+            error: `Your INFT #${inftTokenId} is not authorized. Please host a model on the Console to get authorization.`,
+            deauthorized: true
+          });
+          return;
+        }
+        
+        console.log(`[${requestId}] ✅ User authorized with INFT #${inftTokenId}`);
+      } else {
+        console.log(`[${requestId}] Credit mode - skipping INFT authorization check`);
       }
 
       // Fetch and decrypt data
@@ -659,24 +693,53 @@ class INFTOracleService {
 
       const userAddress = request.user || '0x0000000000000000000000000000000000000000';
       
-      // Check if token exists and get owner
-      let owner: string;
-      let isAuthorized: boolean;
-      try {
-        owner = await this.inftContract.ownerOf(request.tokenId);
-        isAuthorized = await this.inftContract.isAuthorized(request.tokenId, userAddress);
-        console.log(`[${requestId}] Token ${request.tokenId} owner: ${owner}, user: ${userAddress}, authorized: ${isAuthorized}`);
-      } catch (error) {
-        console.error(`[${requestId}] Token ${request.tokenId} does not exist or error checking:`, error);
-        res.status(404).json({ error: `INFT token #${request.tokenId} does not exist. Please mint an INFT first.` });
-        return;
-      }
+      // Check INFT authorization ONLY if useINFT flag is true (user wants free INFT access)
+      const useINFT = request.useINFT === true;
+      let isAuthorized: boolean = false;
+      let inftTokenId: number | null = null;
+      
+      if (useINFT) {
+        console.log(`[${requestId}] INFT mode enabled - checking authorization...`);
+        
+        let userTokenIds: bigint[];
+        
+        try {
+          // Find all INFTs owned by this user
+          userTokenIds = await this.inftContract.tokensOfOwner(userAddress);
+          console.log(`[${requestId}] User ${userAddress} owns ${userTokenIds.length} INFT(s):`, userTokenIds.map(id => id.toString()));
+          
+          if (userTokenIds.length === 0) {
+            console.log(`[${requestId}] User has no INFT - access denied`);
+            res.status(403).json({ 
+              error: `You don't have an INFT. Please host a model on the Console to get one.` 
+            });
+            return;
+          }
+          
+          // Check if the first INFT (users typically have one) is authorized
+          inftTokenId = Number(userTokenIds[0]);
+          isAuthorized = await this.inftContract.isAuthorized(inftTokenId, userAddress);
+          console.log(`[${requestId}] INFT token #${inftTokenId} authorization status: ${isAuthorized}`);
+          
+        } catch (error) {
+          console.error(`[${requestId}] Error checking INFT authorization:`, error);
+          res.status(500).json({ 
+            error: `Failed to check INFT authorization. Please try again.` 
+          });
+          return;
+        }
 
-      if (!isAuthorized) {
-        res.status(403).json({ 
-          error: `Access denied. You are not authorized to use INFT #${request.tokenId}. Owner: ${owner.slice(0,6)}...${owner.slice(-4)}` 
-        });
-        return;
+        if (!isAuthorized) {
+          res.status(403).json({ 
+            error: `Your INFT #${inftTokenId} is not authorized. Please host a model on the Console to get authorization.`,
+            deauthorized: true
+          });
+          return;
+        }
+        
+        console.log(`[${requestId}] ✅ User authorized with INFT #${inftTokenId}`);
+      } else {
+        console.log(`[${requestId}] Credit mode - skipping INFT authorization check`);
       }
 
       // Setup SSE
@@ -808,8 +871,115 @@ class INFTOracleService {
   }
 
   /**
+   * Handle deauthorization of INFT
+   * Uses contract owner's private key to revoke user's authorization
+   * Finds the user's INFT from this specific contract automatically
+   */
+  private async handleDeauthorizeINFT(req: express.Request, res: express.Response): Promise<void> {
+    try {
+      const { userAddress } = req.body;
+      const requestId = req.headers['x-request-id'] as string;
+
+      console.log(`[${requestId}] Deauthorization request - userAddress: ${userAddress}`);
+      
+      if (!userAddress || typeof userAddress !== 'string') {
+        res.status(400).json({ 
+          success: false,
+          error: `Invalid userAddress. Must be a string. Received: ${userAddress} (type: ${typeof userAddress})` 
+        });
+        return;
+      }
+
+      // Check if wallet is initialized
+      if (!this.ownerWallet || !this.inftContractWithSigner) {
+        console.error(`[${requestId}] Deauthorization failed: No owner wallet configured`);
+        res.status(500).json({ 
+          success: false,
+          error: 'Deauthorization not available. PRIVATE_KEY not configured.' 
+        });
+        return;
+      }
+
+      console.log(`[${requestId}] Finding INFTs owned by ${userAddress}...`);
+
+      // Find all INFTs owned by this user
+      let userTokenIds: bigint[];
+      try {
+        userTokenIds = await this.inftContract.tokensOfOwner(userAddress);
+        console.log(`[${requestId}] User owns ${userTokenIds.length} INFT(s):`, userTokenIds.map(id => id.toString()));
+      } catch (error) {
+        console.error(`[${requestId}] Failed to query user's INFTs:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to query user INFTs' 
+        });
+        return;
+      }
+
+      // Check if user has any INFTs
+      if (userTokenIds.length === 0) {
+        console.log(`[${requestId}] User ${userAddress} doesn't own any INFTs - nothing to deauthorize`);
+        res.json({ 
+          success: true,
+          message: 'User does not own any INFTs',
+          txHash: null
+        });
+        return;
+      }
+
+      // Deauthorize the first INFT (in most cases users will only have one)
+      const tokenId = Number(userTokenIds[0]);
+      console.log(`[${requestId}] Deauthorizing user ${userAddress} for INFT #${tokenId}...`);
+
+      // Check if currently authorized
+      const isAuthorized = await this.inftContract.isAuthorized(tokenId, userAddress);
+      if (!isAuthorized) {
+        console.log(`[${requestId}] User ${userAddress} is not authorized for INFT #${tokenId} - nothing to revoke`);
+        res.json({ 
+          success: true,
+          message: 'User is not authorized',
+          tokenId: tokenId,
+          txHash: null
+        });
+        return;
+      }
+
+      // Call ownerRevokeUsage with owner's wallet (contract owner can revoke any authorization)
+      console.log(`[${requestId}] Sending deauthorization transaction...`);
+      const tx = await this.inftContractWithSigner.ownerRevokeUsage(tokenId, userAddress);
+      
+      console.log(`[${requestId}] Transaction submitted: ${tx.hash}`);
+      console.log(`[${requestId}] Waiting for confirmation...`);
+      
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+      
+      console.log(`[${requestId}] ✅ Deauthorization confirmed! Block: ${receipt.blockNumber}`);
+      
+      res.json({ 
+        success: true,
+        message: 'User deauthorized successfully',
+        tokenId: tokenId,
+        txHash: tx.hash,
+        blockNumber: receipt.blockNumber
+      });
+
+    } catch (error: any) {
+      const requestId = req.headers['x-request-id'] as string;
+      console.error(`[${requestId}] Deauthorization error:`, error);
+      
+      res.status(500).json({ 
+        success: false,
+        error: error?.message || 'Deauthorization failed',
+        details: error?.reason || error?.code
+      });
+    }
+  }
+
+  /**
    * Handle mint INFT only (no authorization)
    * Uses contract owner's private key to mint INFT to the user's address
+   * If user already owns an INFT, just returns the existing token ID
    */
   private async handleMintINFT(req: express.Request, res: express.Response): Promise<void> {
     try {
@@ -827,13 +997,6 @@ class INFTOracleService {
         return;
       }
 
-      // Use default values if not provided
-      const finalEncryptedURI = encryptedURI || '0g://storage/model-data-' + Date.now();
-      // Generate a proper metadata hash (cannot be all zeros per INFT contract requirement)
-      const finalMetadataHash = metadataHash || '0x' + crypto.createHash('sha256')
-        .update(`${userAddress}-${finalEncryptedURI}-${Date.now()}`)
-        .digest('hex');
-
       // Check if wallet is initialized
       if (!this.ownerWallet || !this.inftContractWithSigner) {
         console.error(`[${requestId}] Mint failed: No owner wallet configured`);
@@ -843,6 +1006,47 @@ class INFTOracleService {
         });
         return;
       }
+
+      console.log(`[${requestId}] Checking if user already owns an INFT...`);
+
+      // Check if user already owns an INFT from this contract
+      let userTokenIds: bigint[];
+      try {
+        userTokenIds = await this.inftContract.tokensOfOwner(userAddress);
+        console.log(`[${requestId}] User owns ${userTokenIds.length} INFT(s):`, userTokenIds.map(id => id.toString()));
+      } catch (error) {
+        console.error(`[${requestId}] Failed to query user's INFTs:`, error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to query user INFTs' 
+        });
+        return;
+      }
+
+      // If user already owns an INFT, return it and tell them to proceed
+      if (userTokenIds.length > 0) {
+        const existingTokenId = Number(userTokenIds[0]);
+        console.log(`[${requestId}] ✅ User already owns INFT #${existingTokenId} - no need to mint`);
+        
+        res.json({ 
+          success: true,
+          message: 'User already owns an INFT. You can proceed!',
+          tokenId: existingTokenId,
+          alreadyOwned: true,
+          txHash: null
+        });
+        return;
+      }
+
+      // User doesn't own an INFT, proceed with minting
+      console.log(`[${requestId}] User doesn't own an INFT yet. Proceeding with mint...`);
+
+      // Use default values if not provided
+      const finalEncryptedURI = encryptedURI || '0g://storage/model-data-' + Date.now();
+      // Generate a proper metadata hash (cannot be all zeros per INFT contract requirement)
+      const finalMetadataHash = metadataHash || '0x' + crypto.createHash('sha256')
+        .update(`${userAddress}-${finalEncryptedURI}-${Date.now()}`)
+        .digest('hex');
 
       console.log(`[${requestId}] Minting INFT for user ${userAddress}...`);
 
@@ -1507,6 +1711,7 @@ Provide a helpful, concise response:`;
       console.log(`   - GET  /llm/health                - LLM health check`);
       console.log(`   - POST /mint-inft                 - Mint INFT (owner only)`);
       console.log(`   - POST /authorize-inft            - Auto-authorize INFT (owner only)`);
+      console.log(`   - POST /deauthorize-inft          - Revoke INFT authorization (owner only)`);
       console.log(`   - POST /mint-and-authorize-inft   - Mint & auto-authorize (legacy, use separate calls)`);
       console.log(`   - POST /infer                     - Run inference`);
       console.log(`   - POST /infer/stream              - Streaming inference`);

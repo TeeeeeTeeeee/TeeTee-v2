@@ -9,6 +9,7 @@ contract CreditUse {
     address public owner;
 
     mapping(address => uint256) public userCredits;
+    mapping(address => uint256) public lifetimeEarnings; // Track total earnings ever withdrawn by each host
     uint256 public generalPool; // Pool of funds before being allocated to specific LLMs
 
     struct HostedLLMEntry {
@@ -92,6 +93,32 @@ contract CreditUse {
         } else {
             revert("Not a host of this LLM");
         }
+    }
+    
+    // Get total unclaimed earnings across all LLMs for a host
+    function getTotalUnclaimedEarnings(address host) public view returns (uint256) {
+        uint256 totalUnclaimed = 0;
+        
+        for (uint256 i = 0; i < hostedLLMs.length; i++) {
+            HostedLLMEntry storage entry = hostedLLMs[i];
+            
+            // Check if host is host1
+            if (host == entry.host1) {
+                totalUnclaimed += _calculateHostReward(i, 1);
+            }
+            
+            // Check if host is host2
+            if (host == entry.host2) {
+                totalUnclaimed += _calculateHostReward(i, 2);
+            }
+        }
+        
+        return totalUnclaimed;
+    }
+    
+    // Get lifetime earnings for a host
+    function getLifetimeEarnings(address host) public view returns (uint256) {
+        return lifetimeEarnings[host];
     }
 
     function usePrompt(uint256 llmId, uint256 tokensUsed) external {
@@ -198,6 +225,9 @@ contract CreditUse {
         // Pay out remaining rewards before stopping
         uint256 reward = _calculateHostReward(llmId, hostNumber);
         if (reward > 0 && address(this).balance >= reward) {
+            // Track lifetime earnings
+            lifetimeEarnings[hostAddress] += reward;
+            
             (bool success, ) = payable(hostAddress).call{value: reward}("");
             require(success, "Final payment failed");
         }
@@ -252,6 +282,9 @@ contract CreditUse {
             entry.lastWithdrawHost2 = entry.poolBalance;
         }
         
+        // Track lifetime earnings
+        lifetimeEarnings[msg.sender] += reward;
+        
         // Pay the host
         (bool success, ) = payable(msg.sender).call{value: reward}("");
         require(success, "Transfer failed");
@@ -287,6 +320,9 @@ contract CreditUse {
         require(totalReward > 0, "Nothing to withdraw");
         require(address(this).balance >= totalReward, "Insufficient contract balance");
         
+        // Track lifetime earnings
+        lifetimeEarnings[msg.sender] += totalReward;
+        
         // Pay the host all accumulated rewards in one transaction
         (bool success, ) = payable(msg.sender).call{value: totalReward}("");
         require(success, "Transfer failed");
@@ -308,13 +344,15 @@ contract CreditUse {
         entry.lastWithdrawHost1 = entry.poolBalance;
         entry.lastWithdrawHost2 = entry.poolBalance;
 
-        // Pay hosts
+        // Pay hosts and track lifetime earnings
         if (host1Reward > 0) {
+            lifetimeEarnings[entry.host1] += host1Reward;
             (bool s1, ) = payable(entry.host1).call{value: host1Reward}("");
             require(s1, "Transfer to host1 failed");
         }
 
         if (host2Reward > 0) {
+            lifetimeEarnings[entry.host2] += host2Reward;
             (bool s2, ) = payable(entry.host2).call{value: host2Reward}("");
             require(s2, "Transfer to host2 failed");
         }

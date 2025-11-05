@@ -9,13 +9,13 @@ export function useInference() {
   const [isInferring, setIsInferring] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const infer = async (tokenId: number, input: string, userAddress?: string) => {
+  const infer = async (tokenId: number, input: string, userAddress?: string, useINFT: boolean = false) => {
     setIsInferring(true)
     setError(null)
     setResult(null)
 
     try {
-      const response = await runInference(tokenId, input, userAddress)
+      const response = await runInference(tokenId, input, userAddress, useINFT)
       setResult(response)
       return response
     } catch (err: any) {
@@ -51,7 +51,7 @@ export function useStreamingInference() {
   const [error, setError] = useState<string | null>(null)
   const [metadata, setMetadata] = useState<any>(null)
 
-  const streamInfer = async (tokenId: number, input: string, userAddress?: string) => {
+  const streamInfer = async (tokenId: number, input: string, userAddress?: string, useINFT: boolean = false) => {
     setIsStreaming(true)
     setError(null)
     setTokens([])
@@ -71,7 +71,7 @@ export function useStreamingInference() {
         onError: (err) => {
           setError(err)
         }
-      })
+      }, useINFT)
     } catch (err: any) {
       const errorMessage = err?.message || 'Streaming inference failed'
       setError(errorMessage)
