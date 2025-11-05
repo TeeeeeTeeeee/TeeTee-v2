@@ -257,6 +257,41 @@ contract CreditUse {
         require(success, "Transfer failed");
     }
     
+    // Withdraw from all LLMs where caller is a host - single transaction
+    function withdrawAll() external {
+        uint256 totalReward = 0;
+        
+        // Iterate through all LLMs and collect rewards
+        for (uint256 i = 0; i < hostedLLMs.length; i++) {
+            HostedLLMEntry storage entry = hostedLLMs[i];
+            
+            // Check if caller is host1
+            if (msg.sender == entry.host1) {
+                uint256 reward = _calculateHostReward(i, 1);
+                if (reward > 0) {
+                    totalReward += reward;
+                    entry.lastWithdrawHost1 = entry.poolBalance;
+                }
+            }
+            
+            // Check if caller is host2
+            if (msg.sender == entry.host2) {
+                uint256 reward = _calculateHostReward(i, 2);
+                if (reward > 0) {
+                    totalReward += reward;
+                    entry.lastWithdrawHost2 = entry.poolBalance;
+                }
+            }
+        }
+        
+        require(totalReward > 0, "Nothing to withdraw");
+        require(address(this).balance >= totalReward, "Insufficient contract balance");
+        
+        // Pay the host all accumulated rewards in one transaction
+        (bool success, ) = payable(msg.sender).call{value: totalReward}("");
+        require(success, "Transfer failed");
+    }
+    
     // Owner can still withdraw for both hosts at once (legacy function)
     function withdrawToHosts(uint256 llmId) external onlyOwner {
         require(llmId < hostedLLMs.length, "Invalid LLM");

@@ -7,6 +7,8 @@ import { AddModelForm } from '../components/AddModelForm';
 import MagicBento from '../components/MagicBento';
 import { useRegisterLLM } from '../lib/contracts/creditUse/writes/useRegisterLLM';
 import { useGetTotalLLMs } from '../lib/contracts/creditUse/reads/useGetTotalLLMs';
+import { useStopLLM } from '../lib/contracts/creditUse/writes/useStopLLM';
+import { useWithdrawAll } from '../lib/contracts/creditUse/writes/useWithdrawAll';
 import { useAccount, useConfig } from 'wagmi';
 import { readContract } from '@wagmi/core';
 import ABI from '../utils/abi.json';
@@ -126,11 +128,22 @@ const DashboardPage = () => {
   const [existingShardUrl, setExistingShardUrl] = useState<string>('');
   const [isSecondHost, setIsSecondHost] = useState(false);
 
+  // Stop LLM modal state
+  const [showStopModal, setShowStopModal] = useState(false);
+  const [stopModelId, setStopModelId] = useState<number | null>(null);
+  const [stopModelName, setStopModelName] = useState<string>('');
+  const [stopHostNumber, setStopHostNumber] = useState<number | null>(null);
+  const [isBothHostsForStop, setIsBothHostsForStop] = useState(false);
+
   // Smart contract hooks
   const { registerLLM, txHash, isWriting, writeError, resetWrite, isConfirming, isConfirmed } = useRegisterLLM();
   const { totalLLMs, refetch: refetchTotal } = useGetTotalLLMs();
   const { address: connectedAddress } = useAccount();
   const config = useConfig();
+  
+  // Stop and Withdraw hooks
+  const { stopLLM, isWriting: isStopping, isConfirming: isStopConfirming, isConfirmed: isStopConfirmed, resetWrite: resetStopWrite } = useStopLLM();
+  const { withdrawAll, isWriting: isWithdrawWriting, isConfirming: isWithdrawConfirming, isConfirmed: isWithdrawConfirmed, resetWrite: resetWithdrawWrite } = useWithdrawAll();
   
   // INFT hooks for minting
   const { mint: mintINFT, isPending: isMinting, isConfirmed: isMintConfirmed } = useMintINFT();
@@ -200,7 +213,7 @@ const DashboardPage = () => {
     };
 
     fetchMyHostedModels();
-  }, [connectedAddress, totalLLMs, config, isConfirmed]);
+  }, [connectedAddress, totalLLMs, config, isConfirmed, isStopConfirmed]);
 
   // Fetch incomplete models (models waiting for second host)
   useEffect(() => {
@@ -225,19 +238,23 @@ const DashboardPage = () => {
             }) as any;
             
             if (data) {
+              const host1 = data.host1 || data[0] || '0x0000000000000000000000000000000000000000';
               const host2 = data.host2 || data[1] || '0x0000000000000000000000000000000000000000';
               const isComplete = data.isComplete !== undefined ? data.isComplete : (data[11] !== undefined ? data[11] : false);
               
-              // Only include models that are incomplete (no second host)
-              if (!isComplete && host2 === '0x0000000000000000000000000000000000000000') {
+              // Only include models that are incomplete (missing either host1 or host2)
+              // Trust the contract's isComplete flag
+              if (!isComplete) {
                 incomplete.push({
                   id: i,
                   modelName: data.modelName || data[4] || 'Unknown Model',
-                  host1: data.host1 || data[0] || '0x0000000000000000000000000000000000000000',
+                  host1: host1,
+                  host2: host2,
                   shardUrl1: data.shardUrl1 || data[2] || '',
+                  shardUrl2: data.shardUrl2 || data[3] || '',
                   poolBalance: data.poolBalance !== undefined ? data.poolBalance : (data[5] !== undefined ? data[5] : 0n),
                   registeredAtHost1: data.registeredAtHost1 !== undefined ? data.registeredAtHost1 : (data[6] !== undefined ? data[6] : 0n),
-                  registeredAtHost2: 0n,
+                  registeredAtHost2: data.registeredAtHost2 !== undefined ? data.registeredAtHost2 : (data[7] !== undefined ? data[7] : 0n),
                   usageCount: data.usageCount !== undefined ? data.usageCount : (data[10] !== undefined ? data[10] : 0n),
                   isComplete: false
                 });
@@ -257,7 +274,7 @@ const DashboardPage = () => {
     };
 
     fetchIncompleteModels();
-  }, [totalLLMs, config, isConfirmed]);
+  }, [totalLLMs, config, isConfirmed, isStopConfirmed]);
 
   // Reset form state
   const resetForm = () => {
@@ -487,6 +504,70 @@ const DashboardPage = () => {
     setCurrentSlide((prev) => (prev - 1 + GUIDE_SLIDES.length) % GUIDE_SLIDES.length);
   };
 
+  // Handle stop LLM button click
+  const handleStopLLMClick = (model: HostedLLM) => {
+    const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+    const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+    const isBothHosts = isHost1 && isHost2;
+    
+    setStopModelId(model.id);
+    setStopModelName(model.modelName);
+    setIsBothHostsForStop(isBothHosts);
+    
+    // If user only hosts one shard, auto-select which one
+    if (!isBothHosts) {
+      setStopHostNumber(isHost1 ? 1 : 2);
+    } else {
+      setStopHostNumber(null); // User needs to choose
+    }
+    
+    setShowStopModal(true);
+  };
+
+  // Handle stop LLM confirmation
+  const handleStopLLMConfirm = async () => {
+    if (stopModelId === null || stopHostNumber === null) return;
+    
+    try {
+      await stopLLM(stopModelId, stopHostNumber);
+    } catch (error) {
+      console.error('Failed to stop LLM:', error);
+    }
+  };
+
+  // Effect to handle successful stop
+  React.useEffect(() => {
+    if (isStopConfirmed) {
+      console.log('Successfully stopped hosting LLM');
+      setShowStopModal(false);
+      setStopModelId(null);
+      setStopModelName('');
+      setStopHostNumber(null);
+      setIsBothHostsForStop(false);
+      resetStopWrite();
+      refetchTotal();
+    }
+  }, [isStopConfirmed]);
+
+  // Handle withdraw all earnings - single transaction
+  const handleWithdrawAll = async () => {
+    if (!connectedAddress || myHostedModels.length === 0 || isWithdrawWriting) return;
+    
+    try {
+      // Withdraw from ALL models in one transaction
+      await withdrawAll();
+    } catch (error) {
+      console.error('Withdrawal error:', error);
+    }
+  };
+  
+  // Auto-refetch data when withdrawal is confirmed
+  useEffect(() => {
+    if (isWithdrawConfirmed) {
+      refetchTotal();
+    }
+  }, [isWithdrawConfirmed, refetchTotal]);
+
   return (
     <div className="min-h-screen bg-transparent font-inter">
       {/* Navbar */}
@@ -651,7 +732,7 @@ const DashboardPage = () => {
                     })(),
                     description: 'Total earned from hosting',
                     label: 'Earnings Total',
-                    onClick: () => router.push('/chat')
+                    onClick: () => handleWithdrawAll()
                   },
                   {
                     color: '#FFFFFF',
@@ -681,13 +762,14 @@ const DashboardPage = () => {
               <div className="flex items-center justify-center py-10">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-400"></div>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {myHostedModels.map((model) => {
-                  const isComplete = model.isComplete || (model.host2 && model.host2 !== '0x0000000000000000000000000000000000000000');
-                  const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
-                  const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
-                  const isBothHosts = isHost1 && isHost2;
+             ) : (
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 {myHostedModels.map((model) => {
+                   // Trust the contract's isComplete value - it's updated correctly when stopping
+                   const isComplete = model.isComplete;
+                   const isHost1 = model.host1.toLowerCase() === connectedAddress?.toLowerCase();
+                   const isHost2 = model.host2?.toLowerCase() === connectedAddress?.toLowerCase();
+                   const isBothHosts = isHost1 && isHost2;
                   
                   return (
                     <motion.div
@@ -804,36 +886,49 @@ const DashboardPage = () => {
                           <span className="text-gray-700 text-xs font-semibold">
                             {Number(model.usageCount)} times
                           </span>
-                        </div>
-                      </div>
+                       </div>
+                     </div>
 
-                      {isComplete ? (
-                        <button
-                          onClick={() => router.push(`/chat?modelId=${model.id}`)}
-                          className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                          </svg>
-                          Use in Chat
-                        </button>
-                      ) : isHost1 ? (
-                        <button
-                          onClick={() => {
-                            setSelectedLLMId(model.id);
-                            setSelectedModelName(model.modelName);
-                            setExistingShardUrl(model.shardUrl1 || '');
-                            setShowJoinForm(true);
-                          }}
-                          className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
-                        >
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Complete My Model
-                        </button>
-                      ) : null}
-                    </motion.div>
+                       <div className="space-y-2">
+                         {isComplete ? (
+                           <button
+                             onClick={() => router.push(`/chat?modelId=${model.id}`)}
+                             className="w-full py-2 px-4 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                           >
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                             </svg>
+                             Use in Chat
+                           </button>
+                         ) : isHost1 ? (
+                           <button
+                             onClick={() => {
+                               setSelectedLLMId(model.id);
+                               setSelectedModelName(model.modelName);
+                               setExistingShardUrl(model.shardUrl1 || '');
+                               setShowJoinForm(true);
+                             }}
+                             className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                           >
+                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                             </svg>
+                             Complete My Model
+                           </button>
+                         ) : null}
+                         
+                         {/* Stop Hosting Button */}
+                         <button
+                           onClick={() => handleStopLLMClick(model)}
+                           className="w-full py-2 px-4 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm flex items-center justify-center gap-2"
+                         >
+                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                           </svg>
+                           Stop Hosting
+                         </button>
+                       </div>
+                     </motion.div>
                   );
                 })}
               </div>
@@ -926,7 +1021,7 @@ const DashboardPage = () => {
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Incomplete Models</h2>
-              <p className="text-gray-600 mt-1">Join as a second host to complete these models and earn rewards</p>
+              <p className="text-gray-600 mt-1">Models waiting for a host to complete. Join to earn rewards!</p>
             </div>
 
             {isLoadingIncomplete ? (
@@ -938,7 +1033,7 @@ const DashboardPage = () => {
                 <div className="text-center max-w-md">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No Incomplete Models</h3>
                   <p className="text-gray-600 mb-6">
-                    There are currently no models waiting for a second host. Check back later or add your own model!
+                    All models on the network are complete! Check back later or add your own model.
                   </p>
                   <button
                     onClick={() => setShowAddForm(true)}
@@ -953,58 +1048,73 @@ const DashboardPage = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {incompleteModels.map((model) => (
-                  <motion.div
-                    key={model.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
-                        <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
-                      </div>
-                      <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-yellow-100 text-yellow-700">
-                        ⏳ Needs Host 2
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 text-xs mb-4">
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Host 1:</span>
-                        <span className="font-mono text-gray-700 text-xs">{model.host1.slice(0, 10)}...</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Available Shard:</span>
-                        <span className="text-gray-700 font-semibold text-xs">Upper Layers (51-100)</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Existing URL:</span>
-                        <span className="font-mono text-gray-700 break-all text-xs">{model.shardUrl1?.slice(0, 40)}...</span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-gray-500">Pool Balance:</span>
-                        <span className="text-gray-700 font-semibold text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[10px]">OG</span></span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        setSelectedLLMId(model.id);
-                        setSelectedModelName(model.modelName);
-                        setExistingShardUrl(model.shardUrl1 || '');
-                        setShowJoinForm(true);
-                      }}
-                      className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                {incompleteModels.map((model) => {
+                  // Determine which host is missing
+                  const host1Empty = !model.host1 || model.host1 === '0x0000000000000000000000000000000000000000';
+                  const host2Empty = !model.host2 || model.host2 === '0x0000000000000000000000000000000000000000';
+                  
+                  // Determine available shard and existing host info
+                  const needsHost1 = host1Empty && !host2Empty;
+                  const needsHost2 = !host1Empty && host2Empty;
+                  const existingHost = needsHost1 ? model.host2 : model.host1;
+                  const existingShardUrl = needsHost1 ? model.shardUrl2 : model.shardUrl1;
+                  const availableShard = needsHost1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)';
+                  const hostLabel = needsHost1 ? 'Host 2' : 'Host 1';
+                  const joinAsHost = needsHost1 ? '1' : '2';
+                  
+                  return (
+                    <motion.div
+                      key={model.id}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-white rounded-xl border border-gray-200 p-6 hover:border-violet-400 hover:shadow-md transition-all"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Join as Host 2
-                    </button>
-                  </motion.div>
-                ))}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg text-gray-900">{model.modelName}</h3>
+                          <p className="text-xs text-gray-500 mt-1">Model ID: #{model.id}</p>
+                        </div>
+                        <div className="px-2.5 py-1 rounded-full text-xs font-medium flex-shrink-0 bg-yellow-100 text-yellow-700">
+                          ⏳ Needs Host {joinAsHost}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 text-xs mb-4">
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">{hostLabel}:</span>
+                          <span className="font-mono text-gray-700 text-xs">{existingHost?.slice(0, 10)}...</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Available Shard:</span>
+                          <span className="text-gray-700 font-semibold text-xs">{availableShard}</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Existing URL:</span>
+                          <span className="font-mono text-gray-700 break-all text-xs">{existingShardUrl?.slice(0, 40)}...</span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-500">Pool Balance:</span>
+                          <span className="text-gray-700 font-semibold text-xs">{formatPoolBalance(model.poolBalance)} <span className="text-[10px]">0G</span></span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          setSelectedLLMId(model.id);
+                          setSelectedModelName(model.modelName);
+                          setExistingShardUrl(existingShardUrl || '');
+                          setShowJoinForm(true);
+                        }}
+                        className="w-full py-2 px-4 bg-gradient-to-r from-violet-400 to-purple-300 text-white rounded-lg hover:opacity-90 transition-opacity font-medium text-sm flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Join as Host {joinAsHost}
+                      </button>
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </motion.div>
@@ -1501,6 +1611,165 @@ const DashboardPage = () => {
             </motion.div>
           </motion.div>
         )}
+
+        {/* Stop LLM Modal */}
+        {showStopModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1100] p-4"
+            onClick={(e) => {
+              if (!isStopping && !isStopConfirming) {
+                setShowStopModal(false);
+                setStopModelId(null);
+                setStopModelName('');
+                setStopHostNumber(null);
+                setIsBothHostsForStop(false);
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-white rounded-2xl max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="bg-gradient-to-r from-red-500 to-red-400 px-6 py-4 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h2 className="text-xl font-bold">Stop Hosting</h2>
+                  </div>
+                  {!isStopping && !isStopConfirming && (
+                    <button
+                      onClick={() => {
+                        setShowStopModal(false);
+                        setStopModelId(null);
+                        setStopModelName('');
+                        setStopHostNumber(null);
+                        setIsBothHostsForStop(false);
+                      }}
+                      className="text-white hover:text-red-100 transition-colors"
+                    >
+                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <div className="mb-4">
+                  <p className="text-gray-700 mb-2">
+                    You are about to stop hosting <strong>{stopModelName}</strong>.
+                  </p>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div className="text-sm text-yellow-800">
+                        <p className="font-semibold mb-1">Important:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>Any pending rewards will be paid out</li>
+                          <li>Your hosting slot will be cleared</li>
+                          <li>The model may become incomplete if you're the only host</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* If user hosts both shards, ask which one to stop */}
+                {isBothHostsForStop && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Which shard do you want to stop hosting?
+                    </label>
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setStopHostNumber(1)}
+                        className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                          stopHostNumber === 1
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold text-gray-900">Shard 1</div>
+                        <div className="text-xs text-gray-600">Lower Layers (1-50)</div>
+                      </button>
+                      <button
+                        onClick={() => setStopHostNumber(2)}
+                        className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
+                          stopHostNumber === 2
+                            ? 'border-red-500 bg-red-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="font-semibold text-gray-900">Shard 2</div>
+                        <div className="text-xs text-gray-600">Upper Layers (51-100)</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* If user only hosts one shard, show which one */}
+                {!isBothHostsForStop && stopHostNumber && (
+                  <div className="mb-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="text-sm text-gray-700">
+                        <span className="font-semibold">Stopping: </span>
+                        Shard {stopHostNumber} - {stopHostNumber === 1 ? 'Lower Layers (1-50)' : 'Upper Layers (51-100)'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setShowStopModal(false);
+                      setStopModelId(null);
+                      setStopModelName('');
+                      setStopHostNumber(null);
+                      setIsBothHostsForStop(false);
+                    }}
+                    disabled={isStopping || isStopConfirming}
+                    className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleStopLLMConfirm}
+                    disabled={isStopping || isStopConfirming || stopHostNumber === null}
+                    className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm flex items-center justify-center gap-2"
+                  >
+                    {isStopping || isStopConfirming ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        {isStopping ? 'Confirming...' : 'Processing...'}
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Stop Hosting
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
       </div>
     </div>
   );
