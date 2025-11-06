@@ -9,7 +9,9 @@
 
 **Democratizing AI through secure, verifiable, and decentralized inference powered by Trusted Execution Environments**
 
-[Live Demo](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Documentation](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Video Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573)
+[Live Demo](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Documentation](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Video Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
+
+**Twitter Threads:** [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573) • [Thread 2](https://x.com/derek2403/status/1986100026100322593) • [Thread 3](https://x.com/marcustan1337/status/1986066934362943503) • [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
 
 🏆 **0G WaveHack Wave 5 Submission** | Production-Ready | Mainnet Deployed | Fully Verified
 
@@ -66,7 +68,7 @@ All core contracts are deployed and verified on 0G mainnet:
 | **DataVerifierAdapterFixed** | `0x8889106de495dc1731a9b60a58817de6e0142ac0` | Data verification adapter | [View Contract](https://chainscan.0g.ai/address/0x8889106de495dc1731a9b60a58817de6e0142ac0?tab=contract-viewer) |
 | **INFT (ERC-7857)** | `0x56776a7878c7d4cc9943b17d91a3e098c77614da` | Intelligent NFT for AI agents | [View Contract](https://chainscan.0g.ai/address/0x56776a7878c7d4cc9943b17d91a3e098c77614da?tab=contract-viewer) |
 
-🔗 **Building Journey & Mainnet Deployment**: [Read our Twitter thread](https://x.com/ilovedahmo/status/1986064335354126573) documenting key milestones and deployment details.
+🔗 **Building Journey & Community**: Read our Twitter threads ([1](https://x.com/ilovedahmo/status/1986064335354126573), [2](https://x.com/derek2403/status/1986100026100322593), [3](https://x.com/marcustan1337/status/1986066934362943503), [4](https://x.com/avoisavo/status/1986130154222199032)) documenting key milestones, deployment details, and community engagement.
 
 📄 **Research & White Paper**: [TeeTee Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) - Our self-researched approach to distributed LLM inference in TEE
 
@@ -525,6 +527,24 @@ npm run build
 npm start
 ```
 
+#### Step 6: Testing with Demo Endpoints (Optional)
+
+For quick testing without setting up your own TEE infrastructure, we've pre-deployed demo endpoints you can use:
+
+```
+Demo Endpoint 1: https://1e8ddb822fabefe60399b39bbfb83478c1a12e3c-3001.dstack-pha-prod7.phala.network/
+Demo Endpoint 2: https://f39ca1bc5d8d918a378cd8e1d305d5ac3e75dc81-3001.dstack-pha-prod7.phala.network/
+```
+
+**How to use:**
+1. Navigate to the Console page in the frontend
+2. Click "Add Model"
+3. When you reach the "TEE Shard URL" step, hover over "Get free demo links"
+4. Copy one of the demo endpoints and paste it into the Shard URL field
+5. The system will automatically verify the endpoint
+
+These demo endpoints are production-ready TEE nodes running on Phala Cloud for testing purposes.
+
 ---
 
 ### 2. Backend Setup
@@ -753,6 +773,17 @@ TeeTee-v2/
 ---
 
 ## 💻 Development
+
+### Quick Testing with Demo Endpoints
+
+For rapid testing without deploying your own TEE infrastructure, use our pre-deployed demo endpoints:
+
+```
+https://1e8ddb822fabefe60399b39bbfb83478c1a12e3c-3001.dstack-pha-prod7.phala.network/
+https://f39ca1bc5d8d918a378cd8e1d305d5ac3e75dc81-3001.dstack-pha-prod7.phala.network/
+```
+
+Access these via the Console → Add Model → "Get free demo links" hover tooltip. See [Frontend Setup Step 6](#step-6-testing-with-demo-endpoints-optional) for detailed instructions.
 
 ### Running Tests
 
@@ -1049,7 +1080,11 @@ We welcome contributions from the community! TeeTee is an open-source project, a
 - **📄 Technical White Paper**: [LLM Sharding in TEE Research](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0)
 - **📖 Documentation**: [Comprehensive Guide](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing)
 - **🎥 Demo Video**: [TeeTee Wave 5 Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
-- **🐦 Twitter Thread**: [Building Journey & Mainnet Deployment](https://x.com/ilovedahmo/status/1986064335354126573)
+- **🐦 Twitter Threads**: 
+  - [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573)
+  - [Thread 2](https://x.com/derek2403/status/1986100026100322593)
+  - [Thread 3](https://x.com/marcustan1337/status/1986066934362943503)
+  - [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
 - **🔍 GitHub**: [Report bugs or request features](https://github.com/your-org/TeeTee-v2/issues)
 
 ### 📜 Verified Mainnet Contracts (0G Network)
@@ -1079,7 +1114,9 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 **Built with ❤️ by the TeeTee Team**
 
-[Website](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Twitter Thread](https://x.com/ilovedahmo/status/1986064335354126573) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
+[Website](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
+
+**Twitter Threads:** [1](https://x.com/ilovedahmo/status/1986064335354126573) • [2](https://x.com/derek2403/status/1986100026100322593) • [3](https://x.com/marcustan1337/status/1986066934362943503) • [4](https://x.com/avoisavo/status/1986130154222199032)
 
 
 </div>

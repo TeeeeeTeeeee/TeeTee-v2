@@ -370,9 +370,88 @@ export const AddModelForm: React.FC<AddModelFormProps> = ({
             </div>
             
             <div>
-              <label htmlFor="shardUrl" className="block text-sm font-medium text-gray-700 mb-2">
-                Shard URL *
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="shardUrl" className="block text-sm font-medium text-gray-700">
+                  Shard URL *
+                </label>
+                
+                {/* Demo Links Hover Popup */}
+                <div className="relative group z-[9999]">
+                  <button
+                    type="button"
+                    className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1 cursor-help transition-colors"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Get free demo links
+                  </button>
+                  
+                  {/* Hover Popup - Fixed positioning with high z-index */}
+                  <div className="fixed right-8 top-1/2 -translate-y-1/2 w-96 max-w-[90vw] bg-gradient-to-br from-violet-50 to-purple-50 border-2 border-violet-300 rounded-lg shadow-2xl p-4 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-[9999] pointer-events-none group-hover:pointer-events-auto">
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold text-violet-900 mb-2">🚀 Pre-deployed Demo Endpoints</p>
+                        <p className="text-xs text-violet-700 mb-3">Use these for quick testing:</p>
+                      </div>
+                      
+                      {/* Demo Link 1 */}
+                      <div className="bg-white rounded-lg p-2.5 border border-violet-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Demo Link 1:</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-xs font-mono text-violet-700 break-all">
+                            https://1e8ddb822fabefe60399b39bbfb83478c1a12e3c-3001.dstack-pha-prod7.phala.network/
+                          </code>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText('https://1e8ddb822fabefe60399b39bbfb83478c1a12e3c-3001.dstack-pha-prod7.phala.network/');
+                            }}
+                            className="flex-shrink-0 p-1.5 text-violet-600 hover:bg-violet-100 rounded transition-colors pointer-events-auto"
+                            title="Copy to clipboard"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Demo Link 2 */}
+                      <div className="bg-white rounded-lg p-2.5 border border-violet-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-1">Demo Link 2:</p>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 text-xs font-mono text-violet-700 break-all">
+                            https://f39ca1bc5d8d918a378cd8e1d305d5ac3e75dc81-3001.dstack-pha-prod7.phala.network/
+                          </code>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText('https://f39ca1bc5d8d918a378cd8e1d305d5ac3e75dc81-3001.dstack-pha-prod7.phala.network/');
+                            }}
+                            className="flex-shrink-0 p-1.5 text-violet-600 hover:bg-violet-100 rounded transition-colors pointer-events-auto"
+                            title="Copy to clipboard"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <p className="text-xs text-violet-600 italic">
+                        💡 Click copy and paste into the field above
+                      </p>
+                    </div>
+                    
+                    {/* Popup Arrow pointing to trigger */}
+                    <div className="absolute top-1/2 -left-2 w-4 h-4 bg-gradient-to-br from-violet-50 to-purple-50 border-l-2 border-b-2 border-violet-300 transform rotate-45 -translate-y-1/2"></div>
+                  </div>
+                </div>
+              </div>
+              
               <input
                 id="shardUrl"
                 type="url"
