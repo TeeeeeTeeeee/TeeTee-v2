@@ -8,9 +8,13 @@ import path from 'node:path';
 import os from 'node:os';
 import { Readable} from 'stream';
 
-// Network Constants (allow override via env if needed)
-const RPC_URL: string = process.env.ZG_RPC_URL || 'https://evmrpc-testnet.0g.ai/';
-const INDEXER_RPC: string = process.env.ZG_INDEXER_RPC || 'https://indexer-storage-testnet-turbo.0g.ai';
+// 🔴 HARDCODED TO MAINNET - Override with env vars if needed
+const RPC_URL: string = process.env.ZG_RPC_URL || 'https://evmrpc.0g.ai';
+const INDEXER_RPC: string = process.env.ZG_INDEXER_RPC || 'https://indexer-storage-turbo.0g.ai';
+
+console.log(`🌐 0G Storage configured for MAINNET`);
+console.log(`   RPC: ${RPC_URL}`);
+console.log(`   Indexer: ${INDEXER_RPC}`);
 
 // Initialize indexer once (stateless client)
 const indexer: Indexer = new Indexer(INDEXER_RPC);
