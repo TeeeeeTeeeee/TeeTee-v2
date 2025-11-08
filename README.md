@@ -68,6 +68,7 @@ All core contracts are deployed and verified on 0G mainnet:
 | **DataVerifierAdapterFixed** | `0x8889106de495dc1731a9b60a58817de6e0142ac0` | Data verification adapter | [View Contract](https://chainscan.0g.ai/address/0x8889106de495dc1731a9b60a58817de6e0142ac0?tab=contract-viewer) |
 | **INFT (ERC-7857)** | `0x56776a7878c7d4cc9943b17d91a3e098c77614da` | Intelligent NFT for AI agents | [View Contract](https://chainscan.0g.ai/address/0x56776a7878c7d4cc9943b17d91a3e098c77614da?tab=contract-viewer) |
 
+
 #### 🔗 Mainnet Transaction Proofs
 
 | Transaction Type | Transaction Hash | Description |
