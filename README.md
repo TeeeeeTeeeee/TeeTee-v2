@@ -74,7 +74,7 @@ All core contracts are deployed and verified on 0G mainnet:
 |-----------------|------------------|-------------|
 | **0G Storage** | [`0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f`](https://chainscan.0g.ai/tx/0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f) | Chat history uploaded to 0G Storage Mainnet |
 | **INFT Minting** | [`0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d`](https://chainscan.0g.ai/tx/0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d) | INFT token minted on 0G Mainnet |
-| **Credit Usage** | [`0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4`](https://chainscan.0g.ai/tx/0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4) | Smart contract credit transaction on 0G Mainnet |
+| **Register LLM** | [`0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4`](https://chainscan.0g.ai/tx/0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4) | Smart contract register LLM on 0G Mainnet |
 
 #### 🐦 Building Journey & Community
 
