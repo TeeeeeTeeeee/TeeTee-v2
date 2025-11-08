@@ -11,7 +11,7 @@
 
 [Live Demo](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Documentation](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Video Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
 
-**Twitter Threads:** [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573) • [Thread 2](https://x.com/derek2403/status/1986100026100322593) • [Thread 3](https://x.com/marcustan1337/status/1986066934362943503) • [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
+**Twitter Threads:** [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573) • [Thread 2](https://x.com/derek2403/status/1986100026100322593) • [Thread 3](https://x.com/marcustan1337/status/1986066934362943503) • [Thread 4](https://x.com/avoisavo/status/1986130154222199032) • [Thread 5](https://x.com/honzz_0116/status/1986279319338164368)
 
 🏆 **0G WaveHack Wave 5 Submission** | Production-Ready | Mainnet Deployed | Fully Verified
 
@@ -85,6 +85,7 @@ All core contracts are deployed and verified on 0G mainnet:
 | **Thread 2** | @derek2403 | [View on X](https://x.com/derek2403/status/1986100026100322593) |
 | **Thread 3** | @marcustan1337 | [View on X](https://x.com/marcustan1337/status/1986066934362943503) |
 | **Thread 4** | @avoisavo | [View on X](https://x.com/avoisavo/status/1986130154222199032) |
+| **Thread 5** | @honzz_0116 | [View on X](https://x.com/honzz_0116/status/1986279319338164368) |
 
 These threads document key milestones, deployment details, and community engagement throughout our development journey.
 
