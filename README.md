@@ -68,7 +68,24 @@ All core contracts are deployed and verified on 0G mainnet:
 | **DataVerifierAdapterFixed** | `0x8889106de495dc1731a9b60a58817de6e0142ac0` | Data verification adapter | [View Contract](https://chainscan.0g.ai/address/0x8889106de495dc1731a9b60a58817de6e0142ac0?tab=contract-viewer) |
 | **INFT (ERC-7857)** | `0x56776a7878c7d4cc9943b17d91a3e098c77614da` | Intelligent NFT for AI agents | [View Contract](https://chainscan.0g.ai/address/0x56776a7878c7d4cc9943b17d91a3e098c77614da?tab=contract-viewer) |
 
-🔗 **Building Journey & Community**: Read our Twitter threads ([1](https://x.com/ilovedahmo/status/1986064335354126573), [2](https://x.com/derek2403/status/1986100026100322593), [3](https://x.com/marcustan1337/status/1986066934362943503), [4](https://x.com/avoisavo/status/1986130154222199032)) documenting key milestones, deployment details, and community engagement.
+#### 🔗 Mainnet Transaction Proofs
+
+| Transaction Type | Transaction Hash | Description |
+|-----------------|------------------|-------------|
+| **0G Storage** | [`0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f`](https://chainscan.0g.ai/tx/0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f) | Chat history uploaded to 0G Storage Mainnet |
+| **INFT Minting** | [`0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d`](https://chainscan.0g.ai/tx/0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d) | INFT token minted on 0G Mainnet |
+| **Credit Usage** | [`0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4`](https://chainscan.0g.ai/tx/0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4) | Smart contract credit transaction on 0G Mainnet |
+
+#### 🐦 Building Journey & Community
+
+| Thread | Author | Link |
+|--------|--------|------|
+| **Thread 1** | @ilovedahmo | [View on X](https://x.com/ilovedahmo/status/1986064335354126573) |
+| **Thread 2** | @derek2403 | [View on X](https://x.com/derek2403/status/1986100026100322593) |
+| **Thread 3** | @marcustan1337 | [View on X](https://x.com/marcustan1337/status/1986066934362943503) |
+| **Thread 4** | @avoisavo | [View on X](https://x.com/avoisavo/status/1986130154222199032) |
+
+These threads document key milestones, deployment details, and community engagement throughout our development journey.
 
 📄 **Research & White Paper**: [TeeTee Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) - Our self-researched approach to distributed LLM inference in TEE
 
@@ -1080,19 +1097,34 @@ We welcome contributions from the community! TeeTee is an open-source project, a
 - **📄 Technical White Paper**: [LLM Sharding in TEE Research](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0)
 - **📖 Documentation**: [Comprehensive Guide](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing)
 - **🎥 Demo Video**: [TeeTee Wave 5 Demo](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
-- **🐦 Twitter Threads**: 
-  - [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573)
-  - [Thread 2](https://x.com/derek2403/status/1986100026100322593)
-  - [Thread 3](https://x.com/marcustan1337/status/1986066934362943503)
-  - [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
+- **🐦 Twitter Threads**: [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573) | [Thread 2](https://x.com/derek2403/status/1986100026100322593) | [Thread 3](https://x.com/marcustan1337/status/1986066934362943503) | [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
 - **🔍 GitHub**: [Report bugs or request features](https://github.com/your-org/TeeTee-v2/issues)
 
 ### 📜 Verified Mainnet Contracts (0G Network)
 
-- **CreditUse**: [`0xd1ce92b2c95a892fe1166e20b65c73b33b269f7e`](https://chainscan.0g.ai/address/0xd1ce92b2c95a892fe1166e20b65c73b33b269f7e?tab=contract-viewer)
-- **OracleStub**: [`0x20f8f585f8e0d3d1fce7907a3c02aeaa5c924707`](https://chainscan.0g.ai/address/0x20f8f585f8e0d3d1fce7907a3c02aeaa5c924707?tab=contract-viewer)
-- **DataVerifierAdapterFixed**: [`0x8889106de495dc1731a9b60a58817de6e0142ac0`](https://chainscan.0g.ai/address/0x8889106de495dc1731a9b60a58817de6e0142ac0?tab=contract-viewer)
-- **INFT (ERC-7857)**: [`0x56776a7878c7d4cc9943b17d91a3e098c77614da`](https://chainscan.0g.ai/address/0x56776a7878c7d4cc9943b17d91a3e098c77614da?tab=contract-viewer)
+| Contract | Address |
+|----------|---------|
+| **CreditUse** | [`0xd1ce92b2c95a892fe1166e20b65c73b33b269f7e`](https://chainscan.0g.ai/address/0xd1ce92b2c95a892fe1166e20b65c73b33b269f7e?tab=contract-viewer) |
+| **OracleStub** | [`0x20f8f585f8e0d3d1fce7907a3c02aeaa5c924707`](https://chainscan.0g.ai/address/0x20f8f585f8e0d3d1fce7907a3c02aeaa5c924707?tab=contract-viewer) |
+| **DataVerifierAdapterFixed** | [`0x8889106de495dc1731a9b60a58817de6e0142ac0`](https://chainscan.0g.ai/address/0x8889106de495dc1731a9b60a58817de6e0142ac0?tab=contract-viewer) |
+| **INFT (ERC-7857)** | [`0x56776a7878c7d4cc9943b17d91a3e098c77614da`](https://chainscan.0g.ai/address/0x56776a7878c7d4cc9943b17d91a3e098c77614da?tab=contract-viewer) |
+
+### 🔗 Mainnet Transaction Proofs
+
+| Transaction Type | Transaction Hash |
+|-----------------|------------------|
+| **0G Storage** | [`0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f`](https://chainscan.0g.ai/tx/0x183d6cdc0e5ce2e3174e36a5842411208ff8334df560dd2dcc8c222f05df932f) |
+| **INFT Minting** | [`0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d`](https://chainscan.0g.ai/tx/0x3e8144b2d355ccbac0f86371966c0903e46b0099bc0207c5923834c26da6535d) |
+| **Credit Usage** | [`0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4`](https://chainscan.0g.ai/tx/0x3350f908d68a4afddb2f5d6fc3a35ecf135d1059eac0cdd4db45b8fa22fbcba4) |
+
+### 🐦 Twitter Threads
+
+| Thread | Author | Link |
+|--------|--------|------|
+| **Thread 1** | @ilovedahmo | [View on X](https://x.com/ilovedahmo/status/1986064335354126573) |
+| **Thread 2** | @derek2403 | [View on X](https://x.com/derek2403/status/1986100026100322593) |
+| **Thread 3** | @marcustan1337 | [View on X](https://x.com/marcustan1337/status/1986066934362943503) |
+| **Thread 4** | @avoisavo | [View on X](https://x.com/avoisavo/status/1986130154222199032) |
 
 
 ## 📄 License
@@ -1116,7 +1148,7 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 [Website](https://teetee.site) • [Technical Paper](https://docs.google.com/document/d/1D_g_0f35Rdzx2W_6PkjKKRscLBLe_7QvbgQBehHOtR4/edit?tab=t.0) • [Docs](https://docs.google.com/document/d/1pqDrJoYoBfVG19Kxu0-9uSHfwEq3ZQjp8d1CU9Pd-Kk/edit?usp=sharing) • [Demo Video](https://drive.google.com/drive/folders/1eWDgBJ_o2jr5xT2U_ZYclxhAAt15G4HJ?usp=sharing)
 
-**Twitter Threads:** [1](https://x.com/ilovedahmo/status/1986064335354126573) • [2](https://x.com/derek2403/status/1986100026100322593) • [3](https://x.com/marcustan1337/status/1986066934362943503) • [4](https://x.com/avoisavo/status/1986130154222199032)
+**Twitter Threads:** [Thread 1](https://x.com/ilovedahmo/status/1986064335354126573) | [Thread 2](https://x.com/derek2403/status/1986100026100322593) | [Thread 3](https://x.com/marcustan1337/status/1986066934362943503) | [Thread 4](https://x.com/avoisavo/status/1986130154222199032)
 
 
 </div>
